@@ -36,6 +36,16 @@ def _fetch_sp500_tickers():
     return unique
 
 
+def _to_long(raw, tickers):
+    if isinstance(raw.columns, pd.MultiIndex):
+        raw.columns.names = ['Field', 'Ticker']
+        return raw.stack(level='Ticker').reset_index()
+    else:
+        df = raw.reset_index()
+        df['Ticker'] = tickers[0]
+        return df
+
+
 def update_universe(universe_file=UNIVERSE_FILE):
     print("Fetching S&P 500 historical constituents...")
     tickers = _fetch_sp500_tickers()
@@ -47,32 +57,39 @@ def update_universe(universe_file=UNIVERSE_FILE):
     if os.path.exists(universe_file):
         existing = pd.read_parquet(universe_file)
         last_date = pd.to_datetime(existing['Date']).max().date()
+        existing_tickers = set(existing['Ticker'].unique())
+        new_tickers = [t for t in tickers if t not in existing_tickers]
 
+        parts = []
+
+        # Full history for any ticker not yet in the parquet
+        if new_tickers:
+            print(f"  {len(new_tickers)} new tickers found — downloading full history for them...")
+            raw_new = yf.download(new_tickers, start=start_date, end=yf_end, auto_adjust=False, progress=True)
+            if not raw_new.empty:
+                parts.append(_to_long(raw_new, new_tickers))
+
+        # 3-day overlap for existing tickers to overwrite any NaN closes
         fetch_start = (last_date - timedelta(days=3)).strftime('%Y-%m-%d')
         print(f"Updating: last date {last_date} -> fetching {fetch_start} to {today}...")
-    else:
-        existing = None
-        fetch_start = start_date
-        print(f"No file found. Downloading full history from {fetch_start} to {today}...")
+        raw_update = yf.download(tickers, start=fetch_start, end=yf_end, auto_adjust=False, progress=True)
+        if not raw_update.empty:
+            parts.append(_to_long(raw_update, tickers))
 
-    raw = yf.download(tickers, start=fetch_start, end=yf_end, auto_adjust=False, progress=True)
+        if not parts:
+            print("No new data found.")
+            return existing
 
-    if raw.empty:
-        print("No new data found.")
-        return existing
-
-    if isinstance(raw.columns, pd.MultiIndex):
-        raw.columns.names = ['Field', 'Ticker']
-        new_rows = raw.stack(level='Ticker').reset_index()
-    else:
-        new_rows = raw.reset_index()
-        new_rows['Ticker'] = tickers[0]
-
-    if existing is not None:
-        combined = pd.concat([existing, new_rows], ignore_index=True)
+        combined = pd.concat([existing] + parts, ignore_index=True)
         combined = combined.drop_duplicates(subset=['Date', 'Ticker'], keep='last')
     else:
-        combined = new_rows
+        existing = None
+        print(f"No file found. Downloading full history from {start_date} to {today}...")
+        raw = yf.download(tickers, start=start_date, end=yf_end, auto_adjust=False, progress=True)
+        if raw.empty:
+            print("No new data found.")
+            return None
+        combined = _to_long(raw, tickers)
 
     combined = combined.sort_values(['Date', 'Ticker']).reset_index(drop=True)
     combined.to_parquet(universe_file, index=False)
@@ -82,4 +99,4 @@ def update_universe(universe_file=UNIVERSE_FILE):
 
 if __name__ == '__main__':
     df = update_universe()
-    print(df.head(20))
+    print(df.tail(20))
