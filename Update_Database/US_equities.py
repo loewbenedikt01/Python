@@ -48,18 +48,14 @@ def update_universe(universe_file=UNIVERSE_FILE):
         existing = pd.read_parquet(universe_file)
         last_date = pd.to_datetime(existing['Date']).max().date()
 
-        if last_date >= today:
-            print(f"Already up to date (last date: {last_date}).")
-            return existing
-
-        fetch_start = (last_date + timedelta(days=1)).strftime('%Y-%m-%d')
+        fetch_start = (last_date - timedelta(days=3)).strftime('%Y-%m-%d')
         print(f"Updating: last date {last_date} -> fetching {fetch_start} to {today}...")
     else:
         existing = None
         fetch_start = start_date
         print(f"No file found. Downloading full history from {fetch_start} to {today}...")
 
-    raw = yf.download(tickers, start=fetch_start, end=yf_end, auto_adjust=True, progress=True)
+    raw = yf.download(tickers, start=fetch_start, end=yf_end, auto_adjust=False, progress=True)
 
     if raw.empty:
         print("No new data found.")
@@ -86,4 +82,4 @@ def update_universe(universe_file=UNIVERSE_FILE):
 
 if __name__ == '__main__':
     df = update_universe()
-    print(df.tail(20))
+    print(df.head(20))
