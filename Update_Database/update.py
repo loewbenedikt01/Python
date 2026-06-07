@@ -409,11 +409,10 @@ def main():
     print(f'=== Database Update -{END_DATE} ===\n')
 
     # (tickers, filename, default_country, default_continent)
-    # default_country/continent is used only when suffix lookup and DIRECT_MAP both miss
     yf_groups = [
         (ticker_us,         'US_equities.parquet',   'United States',  'North America'),
         (ticker_asia,       'ASIA_equities.parquet',  'Asia',           'Asia'),
-        (ticker_europe,         'EU_equities.parquet',    'Europe',         'Europe'),
+        (ticker_europe,     'EU_equities.parquet',    'Europe',         'Europe'),
         (ticker_de,         'DE_equities.parquet',    'Germany',        'Europe'),
         (ticker_rotw,       'ROTW_equities.parquet',  'Global',         'Global'),
         (ticker_bonds,      'bonds.parquet',           'United States',  'North America'),
