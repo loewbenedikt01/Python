@@ -15,15 +15,16 @@ from datetime import datetime, timedelta
 START_DATE = '2000-01-01'
 END_DATE = datetime.now().strftime('%Y-%m-%d')
 DATABASE_DIR = os.path.join(_ROOT, 'Database')
-FRED_API_KEY = os.getenv('FRED_API_KEY', '')
+FRED_API_KEY = os.getenv('FRED_API_KEY', '8ce0ff451f8503c5fcc7aa27b9ecb3e0')
 
 os.makedirs(DATABASE_DIR, exist_ok=True)
 
 # ─── Ticker imports ───────────────────────────────────────────────────────────
 from US_equities import ticker_us
 from ASIA_equities import ticker_asia
-from EU_equities import ticker_eu
+from EU_equities import ticker_europe
 from DE_equities import ticker_de
+from ROTW_equities import ticker_rotw
 from bond import ticker_bonds
 from commodities import ticker_commodities
 from crypto import ticker_crypto
@@ -32,7 +33,211 @@ from indices import ticker_indices
 from macro import ticker_macro
 from sectors import ticker_sectors
 from sentiment import ticker_sentiment
-from ROTW_equities import ticker_rotw
+
+# ─── Geography mappings ───────────────────────────────────────────────────────
+
+# Exchange suffix ->(country, continent)
+SUFFIX_MAP = {
+    # Asia-Pacific
+    '.T':   ('Japan',         'Asia'),
+    '.HK':  ('Hong Kong',     'Asia'),
+    '.SS':  ('China',         'Asia'),
+    '.SZ':  ('China',         'Asia'),
+    '.NS':  ('India',         'Asia'),
+    '.BO':  ('India',         'Asia'),
+    '.TW':  ('Taiwan',        'Asia'),
+    '.KS':  ('South Korea',   'Asia'),
+    '.KQ':  ('South Korea',   'Asia'),
+    '.SI':  ('Singapore',     'Asia'),
+    '.JK':  ('Indonesia',     'Asia'),
+    '.KL':  ('Malaysia',      'Asia'),
+    '.BK':  ('Thailand',      'Asia'),
+    '.MN':  ('Philippines',   'Asia'),
+    '.VN':  ('Vietnam',       'Asia'),
+    '.SR':  ('Saudi Arabia',  'Asia'),
+    '.TA':  ('Israel',        'Asia'),
+    # Europe
+    '.DE':  ('Germany',       'Europe'),
+    '.PA':  ('France',        'Europe'),
+    '.AS':  ('Netherlands',   'Europe'),
+    '.MI':  ('Italy',         'Europe'),
+    '.MC':  ('Spain',         'Europe'),
+    '.ST':  ('Sweden',        'Europe'),
+    '.CO':  ('Denmark',       'Europe'),
+    '.HE':  ('Finland',       'Europe'),
+    '.BR':  ('Belgium',       'Europe'),
+    '.VI':  ('Austria',       'Europe'),
+    '.LS':  ('Portugal',      'Europe'),
+    '.WA':  ('Poland',        'Europe'),
+    '.L':   ('United Kingdom','Europe'),
+    '.SW':  ('Switzerland',   'Europe'),
+    '.IR':  ('Ireland',       'Europe'),
+    '.OL':  ('Norway',        'Europe'),
+    # Americas
+    '.TO':  ('Canada',        'North America'),
+    '.SA':  ('Brazil',        'South America'),
+    '.MX':  ('Mexico',        'North America'),
+    # Oceania
+    '.AX':  ('Australia',     'Oceania'),
+    '.NZ':  ('New Zealand',   'Oceania'),
+    # Africa
+    '.JO':  ('South Africa',  'Africa'),
+    '.EG':  ('Egypt',         'Africa'),
+}
+
+# Ticker-level overrides for indices and other non-suffix tickers
+DIRECT_MAP = {
+    # ── US broad market ──────────────────────────────────────────────────────
+    '^GSPC': ('United States', 'North America'),
+    '^IXIC': ('United States', 'North America'),
+    '^NDX':  ('United States', 'North America'),
+    '^DJI':  ('United States', 'North America'),
+    '^RUT':  ('United States', 'North America'),
+    '^RUA':  ('United States', 'North America'),
+    '^RUI':  ('United States', 'North America'),
+    '^MID':  ('United States', 'North America'),
+    '^OEX':  ('United States', 'North America'),
+    '^NYA':  ('United States', 'North America'),
+    '^XAX':  ('United States', 'North America'),
+    '^RUJ':  ('United States', 'North America'),
+    '^RUO':  ('United States', 'North America'),
+    '^RLG':  ('United States', 'North America'),
+    '^RLV':  ('United States', 'North America'),
+    # ── Germany ──────────────────────────────────────────────────────────────
+    '^GDAXI':  ('Germany', 'Europe'),
+    '^MDAXI':  ('Germany', 'Europe'),
+    '^SDAXI':  ('Germany', 'Europe'),
+    '^TECDAX': ('Germany', 'Europe'),
+    '^GDAXIP': ('Germany', 'Europe'),
+    # ── Western & Northern Europe ────────────────────────────────────────────
+    '^STOXX50E': ('Europe',         'Europe'),
+    '^FTSE':     ('United Kingdom', 'Europe'),
+    '^FTMC':     ('United Kingdom', 'Europe'),
+    '^FCHI':     ('France',         'Europe'),
+    '^AEX':      ('Netherlands',    'Europe'),
+    '^IBEX':     ('Spain',          'Europe'),
+    'FTSEMIB.MI':('Italy',          'Europe'),
+    '^SSMI':     ('Switzerland',    'Europe'),
+    '^ATX':      ('Austria',        'Europe'),
+    '^BFX':      ('Belgium',        'Europe'),
+    'BCEX.BR':   ('Belgium',        'Europe'),
+    '^OMXS30':   ('Sweden',         'Europe'),
+    '^OMXH25':   ('Finland',        'Europe'),
+    '^OMXC20':   ('Denmark',        'Europe'),
+    '^OSEAX':    ('Norway',         'Europe'),
+    '^PSI20':    ('Portugal',       'Europe'),
+    '^WIG20':    ('Poland',         'Europe'),
+    '^ISEQ':     ('Ireland',        'Europe'),
+    # ── Americas (ex-US) ─────────────────────────────────────────────────────
+    '^GSPTSE': ('Canada',    'North America'),
+    '^BVSP':   ('Brazil',    'South America'),
+    '^MXX':    ('Mexico',    'North America'),
+    '^MERV':   ('Argentina', 'South America'),
+    '^IPSA':   ('Chile',     'South America'),
+    '^COLCAP': ('Colombia',  'South America'),
+    '^GSPCVP': ('United States', 'North America'),
+    # ── Asia-Pacific ─────────────────────────────────────────────────────────
+    '^N225':      ('Japan',       'Asia'),
+    '^TPX':       ('Japan',       'Asia'),
+    '000001.SS':  ('China',       'Asia'),
+    '399001.SZ':  ('China',       'Asia'),
+    '000300.SS':  ('China',       'Asia'),
+    '^HSI':       ('Hong Kong',   'Asia'),
+    '^HSCE':      ('Hong Kong',   'Asia'),
+    '^TWII':      ('Taiwan',      'Asia'),
+    '^TWOTCI':    ('Taiwan',      'Asia'),
+    '^KS11':      ('South Korea', 'Asia'),
+    '^KS200':     ('South Korea', 'Asia'),
+    '^BSESN':     ('India',       'Asia'),
+    '^NSEI':      ('India',       'Asia'),
+    '^AXJO':      ('Australia',   'Oceania'),
+    '^AORD':      ('Australia',   'Oceania'),
+    '^NZ50':      ('New Zealand', 'Oceania'),
+    '^STI':       ('Singapore',   'Asia'),
+    '^JKSE':      ('Indonesia',   'Asia'),
+    '^KLSE':      ('Malaysia',    'Asia'),
+    '^SET.BK':    ('Thailand',    'Asia'),
+    '^PSEI.MN':   ('Philippines', 'Asia'),
+    '^VNINDEX.VN':('Vietnam',     'Asia'),
+    '^CSE':       ('Sri Lanka',   'Asia'),
+    '^KSE':       ('Pakistan',    'Asia'),
+    # ── Middle East & Africa ─────────────────────────────────────────────────
+    '^J203.JO':  ('South Africa',        'Africa'),
+    '^TASI.SR':  ('Saudi Arabia',        'Asia'),
+    '^TA125.TA': ('Israel',              'Asia'),
+    '^QE':       ('Qatar',               'Asia'),
+    '^DFMGI':    ('United Arab Emirates','Asia'),
+    '^ADI':      ('United Arab Emirates','Asia'),
+    '^EGX30':    ('Egypt',               'Africa'),
+    '^KWSE':     ('Kuwait',              'Asia'),
+    # ── US volatility / sector indices ───────────────────────────────────────
+    '^VIX':  ('United States', 'North America'),
+    '^VVIX': ('United States', 'North America'),
+    '^VXN':  ('United States', 'North America'),
+    '^RVX':  ('United States', 'North America'),
+    '^VXEEM':('United States', 'North America'),
+    '^VXD':  ('United States', 'North America'),
+    '^VIX9D':('United States', 'North America'),
+    '^VIX3M':('United States', 'North America'),
+    '^VIX6M':('United States', 'North America'),
+    '^VIX1Y':('United States', 'North America'),
+    '^VNDX': ('United States', 'North America'),
+    '^MOVE': ('United States', 'North America'),
+    '^EVZ':  ('United States', 'North America'),
+    '^OVX':  ('United States', 'North America'),
+    '^GVZ':  ('United States', 'North America'),
+    '^VIFX': ('United States', 'North America'),
+    '^VXGDX':('United States', 'North America'),
+    '^VXSLV':('United States', 'North America'),
+    '^SKEW': ('United States', 'North America'),
+    '^V2TX': ('Europe',        'Europe'),
+    '^SOX':  ('United States', 'North America'),
+    '^XAU':  ('United States', 'North America'),
+    '^HGX':  ('United States', 'North America'),
+    '^OSX':  ('United States', 'North America'),
+    '^UTY':  ('United States', 'North America'),
+    '^TRAN': ('United States', 'North America'),
+    '^XBD':  ('United States', 'North America'),
+    '^IXBK': ('United States', 'North America'),
+    '^IXFN': ('United States', 'North America'),
+    '^IXTR': ('United States', 'North America'),
+    '^IXHC': ('United States', 'North America'),
+    '^IXCO': ('United States', 'North America'),
+    '^DRG':  ('United States', 'North America'),
+    # ── US Treasury yield indices ─────────────────────────────────────────────
+    '^IRX':  ('United States', 'North America'),
+    '^FVX':  ('United States', 'North America'),
+    '^TNX':  ('United States', 'North America'),
+    '^TYX':  ('United States', 'North America'),
+    # ── Crypto ───────────────────────────────────────────────────────────────
+    'BTC-USD': ('Global', 'Global'),
+    'ETH-USD': ('Global', 'Global'),
+    'USDT-USD':('Global', 'Global'),
+}
+
+def get_country_continent(ticker, default_country, default_continent):
+    """Return (country, continent) for a ticker using direct map then suffix map."""
+    if ticker in DIRECT_MAP:
+        return DIRECT_MAP[ticker]
+    dot = ticker.rfind('.')
+    if dot > 0:
+        suffix = ticker[dot:]
+        if suffix in SUFFIX_MAP:
+            return SUFFIX_MAP[suffix]
+    return default_country, default_continent
+
+
+def add_geo_columns(df, default_country, default_continent):
+    """Add Country and Continent columns derived from the Ticker index level."""
+    tickers = df.index.get_level_values('Ticker')
+    df = df.copy()
+    df['Country'] = [
+        get_country_continent(t, default_country, default_continent)[0] for t in tickers
+    ]
+    df['Continent'] = [
+        get_country_continent(t, default_country, default_continent)[1] for t in tickers
+    ]
+    return df
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -75,7 +280,7 @@ def fetch_yfinance(tickers, start, end):
     if isinstance(raw.columns, pd.MultiIndex):
         raw.columns.names = ['Field', 'Ticker']
     else:
-        # Single ticker — yfinance returns flat columns
+        # Single ticker -yfinance returns flat columns
         ticker = tickers[0] if isinstance(tickers, list) else tickers
         raw.columns = pd.MultiIndex.from_tuples(
             [(col, ticker) for col in raw.columns], names=['Field', 'Ticker']
@@ -96,7 +301,7 @@ def fetch_fred(series_ids, start, end):
     Returns a wide DataFrame with Date as index and series IDs as columns.
     """
     if not FRED_API_KEY:
-        print('  [WARN] FRED_API_KEY not set — skipping macro.')
+        print('  [WARN] FRED_API_KEY not set -skipping macro.')
         return pd.DataFrame()
 
     frames = []
@@ -122,31 +327,22 @@ def fetch_fred(series_ids, start, end):
     return pd.concat(frames, axis=1) if frames else pd.DataFrame()
 
 
-def _append_and_save(path, new_df):
-    """Concat new rows onto existing parquet, dedup by index, save."""
-    if os.path.exists(path):
-        existing = pd.read_parquet(path)
-        combined = pd.concat([existing, new_df])
-        combined = combined[~combined.index.duplicated(keep='last')].sort_index()
-    else:
-        combined = new_df.sort_index()
-    combined.to_parquet(path)
-    return len(new_df)
-
-
 # ─── Group updaters ───────────────────────────────────────────────────────────
 
-def update_yfinance_group(tickers, filename):
+def update_yfinance_group(
+    tickers, filename,
+    default_country='United States', default_continent='North America',
+):
     tickers = to_list(tickers)
     path = os.path.join(DATABASE_DIR, filename)
 
     last = get_last_date(path)
     if last is not None:
         start = (last + timedelta(days=1)).strftime('%Y-%m-%d')
-        print(f'  Last date: {last.date()} → fetching from {start}')
+        print(f'  Last date: {last.date()} ->fetching from {start}')
     else:
         start = START_DATE
-        print(f'  No existing data → fetching from {start}')
+        print(f'  No existing data ->fetching from {start}')
 
     if start > END_DATE:
         print('  Already up to date.')
@@ -158,8 +354,20 @@ def update_yfinance_group(tickers, filename):
         print('  No new data returned.')
         return
 
-    n = _append_and_save(path, new_df)
-    print(f'  +{n} rows → {filename}')
+    new_df = add_geo_columns(new_df, default_country, default_continent)
+
+    if os.path.exists(path):
+        existing = pd.read_parquet(path)
+        # Backfill geo columns if the file predates this feature
+        if 'Country' not in existing.columns:
+            existing = add_geo_columns(existing, default_country, default_continent)
+        combined = pd.concat([existing, new_df])
+        combined = combined[~combined.index.duplicated(keep='last')].sort_index()
+    else:
+        combined = new_df.sort_index()
+
+    combined.to_parquet(path)
+    print(f'  +{len(new_df)} rows ->{filename}')
 
 
 def update_fred_group(tickers, filename):
@@ -169,10 +377,10 @@ def update_fred_group(tickers, filename):
     last = get_last_date(path)
     if last is not None:
         start = (last + timedelta(days=1)).strftime('%Y-%m-%d')
-        print(f'  Last date: {last.date()} → fetching from {start}')
+        print(f'  Last date: {last.date()} ->fetching from {start}')
     else:
         start = START_DATE
-        print(f'  No existing data → fetching from {start}')
+        print(f'  No existing data ->fetching from {start}')
 
     if start > END_DATE:
         print('  Already up to date.')
@@ -184,34 +392,49 @@ def update_fred_group(tickers, filename):
         print('  No new data returned.')
         return
 
-    n = _append_and_save(path, new_df)
-    print(f'  +{n} rows → {filename}')
+    if os.path.exists(path):
+        existing = pd.read_parquet(path)
+        combined = pd.concat([existing, new_df])
+        combined = combined[~combined.index.duplicated(keep='last')].sort_index()
+    else:
+        combined = new_df.sort_index()
+
+    combined.to_parquet(path)
+    print(f'  +{len(new_df)} rows ->{filename}')
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
-    print(f'=== Database Update — {END_DATE} ===\n')
+    print(f'=== Database Update -{END_DATE} ===\n')
 
+    # (tickers, filename, default_country, default_continent)
+    # default_country/continent is used only when suffix lookup and DIRECT_MAP both miss
     yf_groups = [
-        ('US equities',   ticker_us,         'US_equities.parquet'),
-        ('Asia equities', ticker_asia,        'ASIA_equities.parquet'),
-        ('EU equities',   ticker_eu,          'EU_equities.parquet'),
-        ('DE equities',   ticker_de,          'DE_equities.parquet'),
-        ('ROTW equities', ticker_rotw,        'ROTW_equities.parquet'),
-        ('Bonds',         ticker_bonds,       'bonds.parquet'),
-        ('Commodities',   ticker_commodities, 'commodities.parquet'),
-        ('Crypto',        ticker_crypto,      'crypto.parquet'),
-        ('Forex',         ticker_forex,       'forex.parquet'),
-        ('Indices',       ticker_indices,     'indices.parquet'),
-        ('Sectors',       ticker_sectors,     'sectors.parquet'),
-        ('Sentiment',     ticker_sentiment,   'sentiment.parquet'),
+        (ticker_us,         'US_equities.parquet',   'United States',  'North America'),
+        (ticker_asia,       'ASIA_equities.parquet',  'Asia',           'Asia'),
+        (ticker_europe,         'EU_equities.parquet',    'Europe',         'Europe'),
+        (ticker_de,         'DE_equities.parquet',    'Germany',        'Europe'),
+        (ticker_rotw,       'ROTW_equities.parquet',  'Global',         'Global'),
+        (ticker_bonds,      'bonds.parquet',           'United States',  'North America'),
+        (ticker_commodities,'commodities.parquet',     'United States',  'North America'),
+        (ticker_crypto,     'crypto.parquet',          'Global',         'Global'),
+        (ticker_forex,      'forex.parquet',           'Global',         'Global'),
+        (ticker_indices,    'indices.parquet',         'United States',  'North America'),
+        (ticker_sectors,    'sectors.parquet',         'Global',         'Global'),
+        (ticker_sentiment,  'sentiment.parquet',       'United States',  'North America'),
     ]
 
-    for name, tickers, filename in yf_groups:
-        print(f'[{name}]')
+    labels = [
+        'US equities', 'Asia equities', 'EU equities', 'DE equities',
+        'ROTW equities', 'Bonds', 'Commodities', 'Crypto', 'Forex',
+        'Indices', 'Sectors', 'Sentiment',
+    ]
+
+    for label, (tickers, filename, def_country, def_continent) in zip(labels, yf_groups):
+        print(f'[{label}]')
         try:
-            update_yfinance_group(tickers, filename)
+            update_yfinance_group(tickers, filename, def_country, def_continent)
         except Exception as e:
             print(f'  [ERROR] {e}')
 

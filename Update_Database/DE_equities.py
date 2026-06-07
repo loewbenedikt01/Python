@@ -4,7 +4,7 @@ import requests
 from datetime import datetime, timedelta
 import os
 
-ticker_germany = {
+ticker_de = {
     'SAP.DE': 'SAP SE',
     'SIE.DE': 'Siemens AG',
     'ALV.DE': 'Allianz SE',
