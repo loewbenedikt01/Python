@@ -311,7 +311,10 @@ def plot_equity_regime(regime_df, region_cols):
         if col not in data.columns:
             continue
         label = col.replace('breadth_', '').replace('_', ' ').title()
-        series = data[col].rolling(10).mean() * 100
+        # Roll on non-NaN rows only (trading days for this continent) so that
+        # a single holiday NaN doesn't propagate across the following 9 rows.
+        td = data[col].dropna()
+        series = td.rolling(10, min_periods=5).mean().reindex(data.index) * 100
         ax2.plot(data.index, series, linewidth=1.2, color=color, label=label)
 
     ax2.axhline(55, color='#7f8c8d', linewidth=1, linestyle=':')
