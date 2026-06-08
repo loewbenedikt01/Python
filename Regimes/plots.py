@@ -1,3 +1,4 @@
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from config import REGIME_COLORS, CURVE_COLORS
@@ -7,6 +8,24 @@ CRYPTO_REGIME_COLORS = {
     'Crypto Neutral': '#ffc04d',
     'Crypto Bear':    '#e74c3c',
     'Unknown':        '#555577',
+}
+
+FOREX_REGIME_COLORS = {
+    'Risk On':    '#2ecc71',
+    'Late Cycle': '#f39c12',
+    'Stress':     '#e74c3c',
+    'Recession':  '#3498db',
+    'Transition': '#7f8c8d',
+    'Unknown':    '#555577',
+}
+
+_STRENGTH_COLORS = {
+    'strength_usd': '#f1c40f',
+    'strength_eur': '#3498db',
+    'strength_jpy': '#e74c3c',
+    'strength_aud': '#2ecc71',
+    'strength_gbp': '#9b59b6',
+    'strength_chf': '#1abc9c',
 }
 
 _BREADTH_META = {'breadth_weighted', 'breadth_smooth', 'breadth_trend',
@@ -229,4 +248,95 @@ def plot_crypto_regime(crypto_df) -> None:
                facecolor='#1a1a2e', fontsize=8)
 
     plt.tight_layout()
+    plt.show()
+
+
+def _smooth_plot(series: pd.Series, window: int) -> pd.Series:
+    """Light smoothing for display only — dropna → rolling → reindex."""
+    return series.dropna().rolling(window, min_periods=max(1, window // 2)).mean().reindex(series.index)
+
+
+def plot_forex_regime(forex_df) -> None:
+    data = forex_df.dropna(subset=['dxy_ma200']).copy()
+
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(
+        4, 1, figsize=(16, 13),
+        gridspec_kw={'height_ratios': [3, 1.5, 2, 1]},
+        sharex=True,
+    )
+    fig.patch.set_facecolor('#1a1a2e')
+    _dark_axes(ax1, ax2, ax3, ax4)
+
+    # ── Top: DXY + MA50/MA200 with master regime shading ─────────────────────
+    _shade(ax1, data, 'forex_regime', FOREX_REGIME_COLORS, alpha=0.28)
+
+    if 'dxy' in data.columns:
+        ax1.plot(data.index, data['dxy'], color='#ffffff', linewidth=0.9,
+                 alpha=0.6, label='DXY')
+    ax1.plot(data.index, data['dxy_ma50'],  color='#f1c40f', linewidth=1.4, label='MA50')
+    ax1.plot(data.index, data['dxy_ma200'], color='#e74c3c', linewidth=1.4,
+             linestyle='--', label='MA200')
+    ax1.set_ylabel('DXY (USD Index)', color='#cccccc')
+    ax1.set_title('Forex Regime  —  USD × Carry Framework',
+                  color='#ecf0f1', fontsize=13, pad=10)
+
+    line_handles, _ = ax1.get_legend_handles_labels()
+    regime_patches  = [
+        mpatches.Patch(facecolor=FOREX_REGIME_COLORS[r], alpha=0.6, label=r)
+        for r in ['Risk On', 'Late Cycle', 'Stress', 'Recession', 'Transition']
+    ]
+    ax1.legend(handles=line_handles + regime_patches, loc='upper left',
+               framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e', fontsize=8)
+
+    # ── Second: AUD/JPY carry proxy with carry regime shading ─────────────────
+    CARRY_COLORS = {'Carry Bull': '#2ecc71', 'Carry Neutral': '#ffc04d',
+                    'Carry Bear': '#e74c3c', 'Unknown': '#555577'}
+    if 'carry_regime' in data.columns:
+        _shade(ax2, data, 'carry_regime', CARRY_COLORS, alpha=0.35)
+
+    if 'audjpy' in data.columns:
+        ax2.plot(data.index, data['audjpy'], color='#ffffff', linewidth=0.9,
+                 alpha=0.6, label='AUD/JPY')
+    if 'audjpy_ma50' in data.columns:
+        ax2.plot(data.index, data['audjpy_ma50'], color='#3498db', linewidth=1.4,
+                 label='AUD/JPY MA50')
+    ax2.set_ylabel('AUD/JPY (Carry)', color='#cccccc')
+
+    carry_patches = [mpatches.Patch(facecolor=CARRY_COLORS[r], alpha=0.6, label=r)
+                     for r in ['Carry Bull', 'Carry Neutral', 'Carry Bear']]
+    ax2.legend(handles=carry_patches + ax2.get_legend_handles_labels()[0],
+               loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    # ── Third: Currency strength index ────────────────────────────────────────
+    for col, color in _STRENGTH_COLORS.items():
+        if col not in data.columns:
+            continue
+        label  = col.replace('strength_', '').upper()
+        series = _smooth_plot(data[col], window=5)
+        ax3.plot(data.index, series, color=color, linewidth=1.3, label=label)
+
+    ax3.axhline(0, color='#7f8c8d', linewidth=0.8, linestyle=':')
+    ax3.set_ylabel('Currency Strength', color='#cccccc')
+    ax3.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', ncol=6, fontsize=8)
+
+    # ── Bottom: EM stress z-score ─────────────────────────────────────────────
+    if 'em_stress_smooth' in data.columns:
+        em = data['em_stress_smooth']
+        ax4.plot(data.index, em, color='#e74c3c', linewidth=1.2, label='EM Stress (z-score)')
+        ax4.fill_between(data.index, em, 0,
+                         where=em >  1.0, color='#e74c3c', alpha=0.25, label='Stress zone')
+        ax4.fill_between(data.index, em, 0,
+                         where=em < -0.5, color='#2ecc71', alpha=0.25, label='Relief zone')
+        ax4.axhline( 1.0, color='#e74c3c', linewidth=0.8, linestyle=':', alpha=0.7)
+        ax4.axhline(-0.5, color='#2ecc71', linewidth=0.8, linestyle=':', alpha=0.7)
+        ax4.axhline( 0,   color='#7f8c8d', linewidth=0.8, linestyle=':')
+    ax4.set_ylabel('EM Stress (σ)', color='#cccccc')
+    ax4.set_xlabel('Date', color='#cccccc')
+    ax4.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.04)
     plt.show()
