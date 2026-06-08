@@ -2,8 +2,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from config import REGIME_COLORS, CURVE_COLORS
 
+CRYPTO_REGIME_COLORS = {
+    'Crypto Bull':    '#2ecc71',
+    'Crypto Neutral': '#ffc04d',
+    'Crypto Bear':    '#e74c3c',
+    'Unknown':        '#555577',
+}
+
 _BREADTH_META = {'breadth_weighted', 'breadth_smooth', 'breadth_trend',
-                 'breadth_rising', 'breadth_delta'}
+                 'breadth_delta', 'breadth_rising', 'breadth_direction'}
 
 _CONT_COLORS = ['#2ecc71', '#3498db', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c']
 
@@ -64,7 +71,7 @@ def plot_equity_regime(regime_df) -> None:
     line_handles, _ = ax1.get_legend_handles_labels()
     regime_patches = [
         mpatches.Patch(facecolor=REGIME_COLORS[r], alpha=0.6, label=r)
-        for r in ['Expanding Bull', 'Deteriorating Bull', 'Recovering Bear', 'Confirmed Bear']
+        for r in ['Bull', 'Neutral', 'Bear']
     ]
     ax1.legend(handles=line_handles + regime_patches, loc='upper left',
                framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e')
@@ -147,4 +154,79 @@ def plot_bond_regime(bond_df) -> None:
 
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.04)
+    plt.show()
+
+
+def plot_crypto_regime(crypto_df) -> None:
+    data = crypto_df.dropna(subset=['btc_ma200', 'eth_btc_ma']).copy()
+
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(16, 10),
+        gridspec_kw={'height_ratios': [3, 1.5, 1.5]},
+        sharex=True,
+    )
+    fig.patch.set_facecolor('#1a1a2e')
+    _dark_axes(ax1, ax2, ax3)
+
+    # ── Top: BTC price + MA200 with regime shading ───────────────────────────
+    _shade(ax1, data, 'crypto_regime', CRYPTO_REGIME_COLORS, alpha=0.28)
+
+    ax1.plot(data.index, data['btc_smooth'], color='#ffffff', linewidth=1.0,
+             alpha=0.7, label='BTC (5d smooth)')
+    ax1.plot(data.index, data['btc_ma200'],  color='#e74c3c', linewidth=1.4,
+             linestyle='--', label='BTC MA200')
+    ax1.set_yscale('log')
+    ax1.set_ylabel('BTC Price (log)', color='#cccccc')
+    ax1.set_title('Crypto Regime  —  BTC Trend, Momentum & ETH/BTC',
+                  color='#ecf0f1', fontsize=13, pad=10)
+
+    ax1_score = ax1.twinx()
+    ax1_score.set_facecolor('none')
+    ax1_score.plot(data.index, data['crypto_score_smooth'], color='#f1c40f',
+                   linewidth=1.2, alpha=0.6, linestyle=':', label='Score (smooth)')
+    ax1_score.axhline(3, color='#2ecc71', linewidth=0.8, linestyle=':', alpha=0.5)
+    ax1_score.axhline(1, color='#e74c3c', linewidth=0.8, linestyle=':', alpha=0.5)
+    ax1_score.set_ylim(-0.5, 5)
+    ax1_score.set_ylabel('Bull Score', color='#f1c40f')
+    ax1_score.tick_params(colors='#f1c40f')
+
+    line_handles, _ = ax1.get_legend_handles_labels()
+    regime_patches  = [
+        mpatches.Patch(facecolor=CRYPTO_REGIME_COLORS[r], alpha=0.6, label=r)
+        for r in ['Crypto Bull', 'Crypto Neutral', 'Crypto Bear']
+    ]
+    ax1.legend(handles=line_handles + regime_patches, loc='upper left',
+               framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e')
+
+    # ── Middle: BTC 63d momentum ──────────────────────────────────────────────
+    ax2.plot(data.index, data['btc_return_smooth'] * 100,
+             color='#f1c40f', linewidth=1.4, label='BTC 63d Return (smooth)')
+    ax2.axhline(0, color='#e74c3c', linewidth=1.0, alpha=0.8)
+    ax2.fill_between(data.index, data['btc_return_smooth'] * 100, 0,
+                     where=data['btc_return_smooth'] > 0,
+                     color='#2ecc71', alpha=0.15)
+    ax2.fill_between(data.index, data['btc_return_smooth'] * 100, 0,
+                     where=data['btc_return_smooth'] < 0,
+                     color='#e74c3c', alpha=0.15)
+    ax2.set_ylabel('63d Return (%)', color='#cccccc')
+    ax2.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    # ── Bottom: ETH/BTC ratio vs its MA ──────────────────────────────────────
+    ax3.plot(data.index, data['eth_btc_ratio'], color='#9b59b6', linewidth=1.0,
+             alpha=0.6, label='ETH/BTC ratio')
+    ax3.plot(data.index, data['eth_btc_ma'],    color='#3498db', linewidth=1.4,
+             label=f'ETH/BTC MA50')
+    ax3.fill_between(data.index, data['eth_btc_ratio'], data['eth_btc_ma'],
+                     where=data['eth_btc_ratio'] > data['eth_btc_ma'],
+                     color='#2ecc71', alpha=0.15, label='ETH Leading')
+    ax3.fill_between(data.index, data['eth_btc_ratio'], data['eth_btc_ma'],
+                     where=data['eth_btc_ratio'] < data['eth_btc_ma'],
+                     color='#e74c3c', alpha=0.15, label='BTC Dominant')
+    ax3.set_ylabel('ETH/BTC', color='#cccccc')
+    ax3.set_xlabel('Date',    color='#cccccc')
+    ax3.legend(loc='upper right', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    plt.tight_layout()
     plt.show()

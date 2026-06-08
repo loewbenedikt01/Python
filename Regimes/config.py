@@ -32,14 +32,14 @@ EQUITY_REGION_WEIGHTS = {
     'south_america': 0.04,
     'oceania':       0.03,
 }
-EQUITY_BULL_THRESHOLD  = 0.57
-EQUITY_BEAR_THRESHOLD  = 0.53
+EQUITY_BULL_THRESHOLD  = 0.60
+EQUITY_BEAR_THRESHOLD  = 0.50
 EQUITY_MIN_STOCKS      = 5     # min tickers with valid MA200 to trust a continent's breadth
 EQUITY_MA_WINDOW       = 200
 EQUITY_SMOOTH_WINDOW   = 10
 EQUITY_TREND_WINDOW    = 63
-EQUITY_CONFIRM_WINDOW  = 5
-EQUITY_CONFIRM_MIN     = 4
+EQUITY_CONFIRM_WINDOW  = 7
+EQUITY_CONFIRM_MIN     = 5
 
 # ── Bond Regime ───────────────────────────────────────────────────────────────
 BOND_BULL_ENTRY             = 3
@@ -72,9 +72,20 @@ COMMODITY_SMOOTH_WINDOW  = 10
 COMMODITY_CONFIRM_WINDOW = 5
 
 # ── Crypto Regime ─────────────────────────────────────────────────────────────
-CRYPTO_TREND_WINDOW    = 200
-CRYPTO_SMOOTH_WINDOW   = 10
-CRYPTO_CONFIRM_WINDOW  = 5
+CRYPTO_BULL_ENTRY        = 3.5  # smoothed score must reach >= 3.5 to enter Bull
+CRYPTO_BULL_EXIT         = 2.5  # exit Bull below 2.5 → Neutral (not Bear directly)
+CRYPTO_BEAR_ENTRY        = 1.5  # smoothed score must drop <= 1.5 to enter Bear
+CRYPTO_BEAR_EXIT         = 2.5  # exit Bear above 2.5 → Neutral (not Bull directly)
+CRYPTO_MA_WINDOW         = 200
+CRYPTO_BTC_SMOOTH        = 5    # smooth BTC price before MA200 comparison
+CRYPTO_ETH_SMOOTH        = 5
+CRYPTO_MOMENTUM_WINDOW   = 63   # days for BTC return signal
+CRYPTO_MOMENTUM_SMOOTH   = 10
+CRYPTO_ETH_BTC_MA        = 50   # MA window for ETH/BTC ratio trend
+CRYPTO_SMOOTH_WINDOW     = 10
+CRYPTO_SCORE_SMOOTH      = 10   # smooth the 0-4 bull score before hysteresis (wider than bonds)
+CRYPTO_CONFIRM_WINDOW    = 10   # wider than equities/bonds — crypto is 5-10x more volatile
+CRYPTO_CONFIRM_MIN       = 7
 
 # ── HMM ───────────────────────────────────────────────────────────────────────
 HMM_N_COMPONENTS    = 4
@@ -83,11 +94,10 @@ HMM_COVARIANCE_TYPE = 'full'
 
 # ── Colours ───────────────────────────────────────────────────────────────────
 REGIME_COLORS = {
-    # Equity
-    'Expanding Bull':     '#2ecc71',
-    'Deteriorating Bull': '#f39c12',
-    'Recovering Bear':    '#3498db',
-    'Confirmed Bear':     '#e74c3c',
+    # Equity (3-state — matches bond and crypto structure)
+    'Bull':    '#2ecc71',
+    'Neutral': '#ffc04d',
+    'Bear':    '#e74c3c',
     # Bond
     'Bond Bull':          '#2ecc71',
     'Bond Neutral':       '#ffc04d',
