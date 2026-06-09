@@ -1,7 +1,15 @@
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from config import REGIME_COLORS, CURVE_COLORS
+
+COMMODITY_REGIME_COLORS = {
+    'Commodity Bull':    '#2ecc71',
+    'Commodity Neutral': '#ffc04d',
+    'Commodity Bear':    '#e74c3c',
+    'Unknown':           '#555577',
+}
 
 CRYPTO_REGIME_COLORS = {
     'Crypto Bull':    '#2ecc71',
@@ -340,6 +348,111 @@ def plot_forex_regime(forex_df) -> None:
     ax4.set_xlabel('Date', color='#cccccc')
     ax4.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
                facecolor='#1a1a2e', fontsize=8)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.04)
+    plt.show()
+
+
+def plot_commodity_regime(commodity_df) -> None:
+    data = commodity_df.dropna(subset=['bull_score_smooth']).copy()
+
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(16, 11),
+        gridspec_kw={'height_ratios': [3, 1.5, 1.5]},
+        sharex=True,
+    )
+    fig.patch.set_facecolor('#1a1a2e')
+    _dark_axes(ax1, ax2, ax3)
+
+    # ── Top: Oil price + MA200 with commodity regime shading ─────────────────
+    _shade(ax1, data, 'commodity_regime', COMMODITY_REGIME_COLORS, alpha=0.28)
+
+    if 'oil' in data.columns:
+        ax1.plot(data.index, data['oil'], color='#ffffff', linewidth=0.9,
+                 alpha=0.6, label='WTI Crude')
+    if 'oil_smooth' in data.columns:
+        ax1.plot(data.index, data['oil_smooth'], color='#f1c40f', linewidth=1.4,
+                 label='WTI (20d smooth)')
+    if 'oil_ma200' in data.columns:
+        ax1.plot(data.index, data['oil_ma200'], color='#e74c3c', linewidth=1.4,
+                 linestyle='--', label='WTI MA200')
+    ax1.set_ylabel('WTI Crude (USD)', color='#cccccc')
+    ax1.set_title('Commodity Regime  —  Energy · Industrial · Precious · Agriculture',
+                  color='#ecf0f1', fontsize=13, pad=10)
+
+    line_handles, _ = ax1.get_legend_handles_labels()
+    regime_patches  = [
+        mpatches.Patch(facecolor=COMMODITY_REGIME_COLORS[r], alpha=0.6, label=r)
+        for r in ['Commodity Bull', 'Commodity Neutral', 'Commodity Bear']
+    ]
+    ax1.legend(handles=line_handles + regime_patches, loc='upper right',
+               framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e', fontsize=8)
+
+    # ── Middle: Copper / Gold ratio + MA200 ───────────────────────────────────
+    if 'copper_gold_ratio_smooth' in data.columns:
+        ax2.plot(data.index, data['copper_gold_ratio_smooth'], color='#e67e22',
+                 linewidth=1.4, label='Cu/Au Ratio (smooth)')
+    if 'copper_gold_ratio_ma200' in data.columns:
+        ax2.plot(data.index, data['copper_gold_ratio_ma200'], color='#e74c3c',
+                 linewidth=1.4, linestyle='--', label='Cu/Au MA200')
+    if 'copper_gold_ratio_smooth' in data.columns and 'copper_gold_ratio_ma200' in data.columns:
+        above = data['copper_gold_ratio_smooth'] > data['copper_gold_ratio_ma200']
+        ax2.fill_between(data.index, data['copper_gold_ratio_smooth'],
+                         data['copper_gold_ratio_ma200'],
+                         where=above,  color='#2ecc71', alpha=0.35, label='Growth > Fear')
+        ax2.fill_between(data.index, data['copper_gold_ratio_smooth'],
+                         data['copper_gold_ratio_ma200'],
+                         where=~above, color='#e74c3c', alpha=0.35, label='Fear > Growth')
+    ax2.set_ylabel('Cu / Au Ratio', color='#cccccc')
+    ax2.legend(loc='upper right', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    # ── Bottom: Sub-group scores smoothed to continuous 0-1 lines ────────────
+    # Raw binary signals (0/1) look like square waves — smooth them into
+    # continuous score lines so the panel reads as a macro dashboard
+    if 'energy_score' in data.columns:
+        energy_plot = data['energy_score'].rolling(40, min_periods=20).mean() / 3
+        ax3.plot(data.index, energy_plot, color='#e74c3c', linewidth=1.3,
+                 alpha=0.85, label='Energy (0-1)')
+
+    if 'gold_score' in data.columns:
+        gold_plot = data['gold_score'].rolling(40, min_periods=20).mean() / 3
+        ax3.plot(data.index, gold_plot, color='#f1c40f', linewidth=1.3,
+                 alpha=0.85, label='Gold (0-1)')
+
+    if 'ag_signal' in data.columns:
+        ag_plot = data['ag_signal'].rolling(40, min_periods=20).mean()
+        ax3.plot(data.index, ag_plot, color='#2ecc71', linewidth=1.3,
+                 alpha=0.85, label='Agriculture (0-1)')
+
+    # Industrial: z-score of 20d-smoothed Cu/Au ratio, clipped ±2, scaled to 0-1
+    if 'copper_gold_ratio' in data.columns:
+        cu_au_sm   = data['copper_gold_ratio'].rolling(40, min_periods=20).mean()
+        cu_au_mean = cu_au_sm.rolling(252, min_periods=126).mean()
+        cu_au_std  = cu_au_sm.rolling(252, min_periods=126).std()
+        indus_plot = ((cu_au_sm - cu_au_mean) / cu_au_std.replace(0, np.nan)
+                      ).clip(-2, 2) / 4 + 0.5
+        ax3.plot(data.index, indus_plot, color='#e67e22', linewidth=1.3,
+                 alpha=0.85, label='Industrial Cu/Au (z-score)')
+
+    # Overlay smoothed bull score on right axis
+    if 'bull_score_smooth' in data.columns:
+        ax3_r = ax3.twinx()
+        ax3_r.set_facecolor('none')
+        ax3_r.plot(data.index, data['bull_score_smooth'], color='#ffffff',
+                   linewidth=1.6, alpha=0.45, linestyle=':', label='Bull Score')
+        ax3_r.axhline(3.0, color='#2ecc71', linewidth=0.7, linestyle=':', alpha=0.5)
+        ax3_r.axhline(1.0, color='#e74c3c', linewidth=0.7, linestyle=':', alpha=0.5)
+        ax3_r.set_ylim(-0.2, 4.5)
+        ax3_r.set_ylabel('Bull Score (0-4)', color='#aaaaaa', fontsize=8)
+        ax3_r.tick_params(colors='#aaaaaa')
+
+    ax3.set_ylim(-0.1, 1.1)
+    ax3.set_ylabel('Sub-group Score (0-1)', color='#cccccc')
+    ax3.set_xlabel('Date', color='#cccccc')
+    ax3.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8, ncol=4)
 
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.04)

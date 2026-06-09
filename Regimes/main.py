@@ -26,15 +26,16 @@ from Hidden_Markov_Model.hmm import compute_hmm_regime
 from plots import (
     plot_equity_regime,
     plot_bond_regime,
+    plot_commodity_regime,
     plot_crypto_regime,
     plot_forex_regime,
 )
 
 # ── Toggle what to run ────────────────────────────────────────────────────────
 RUN_EQUITY    = False
-RUN_BOND      = True
+RUN_BOND      = False
 RUN_FOREX     = False
-RUN_COMMODITY = False
+RUN_COMMODITY = True
 RUN_CRYPTO    = False
 
 RUN_GROWTH    = False
@@ -95,6 +96,8 @@ if PLOT:
         plot_equity_regime(equity_df)
     if bond_df is not None and not bond_df.empty:
         plot_bond_regime(bond_df)
+    if commodity_df is not None and not commodity_df.empty:
+        plot_commodity_regime(commodity_df)
     if crypto_df is not None and not crypto_df.empty:
         plot_crypto_regime(crypto_df)
     if forex_df is not None and not forex_df.empty:

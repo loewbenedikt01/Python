@@ -86,9 +86,17 @@ FOREX_MASTER_CONFIRM_MIN    = 11  # ~75% agreement
 FOREX_MIN_PAIRS            = 10   # min pairs with valid data before master regime is assigned
 
 # ── Commodity Regime ──────────────────────────────────────────────────────────
-COMMODITY_TREND_WINDOW   = 200
-COMMODITY_SMOOTH_WINDOW  = 10
-COMMODITY_CONFIRM_WINDOW = 5
+COMMODITY_MA_WINDOW       = 200
+COMMODITY_SMOOTH_WINDOW   = 20
+COMMODITY_MOMENTUM_WINDOW = 63
+COMMODITY_BASKET_WINDOW   = 63   # quarterly return for broad CRB trend
+COMMODITY_SCORE_SMOOTH    = 20
+COMMODITY_BULL_ENTRY      = 2.7   # 2.7/4 signals needed to enter Bull (~68%)
+COMMODITY_BULL_EXIT       = 2.1   # exit Bull when score < 2.1 (sooner than 2.0 → more Neutral)
+COMMODITY_BEAR_ENTRY      = 1.3   # 1.3/4 signals → Bear (raises threshold from 0.8)
+COMMODITY_BEAR_EXIT       = 1.9   # exit Bear when score > 1.9 (sooner than 2.0 → more Neutral)
+COMMODITY_CONFIRM_WINDOW  = 15
+COMMODITY_CONFIRM_MIN     = 11
 
 # ── Crypto Regime ─────────────────────────────────────────────────────────────
 CRYPTO_BULL_ENTRY        = 3.5  # smoothed score must reach >= 3.5 to enter Bull
