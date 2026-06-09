@@ -114,6 +114,20 @@ CRYPTO_SCORE_SMOOTH      = 10   # smooth the 0-4 bull score before hysteresis (w
 CRYPTO_CONFIRM_WINDOW    = 10   # wider than equities/bonds — crypto is 5-10x more volatile
 CRYPTO_CONFIRM_MIN       = 7
 
+# ── Growth Regime (Multi-Model) ───────────────────────────────────────────────
+GROWTH_THRESHOLD          = 0.55   # normalised score above this = above-trend growth
+GROWTH_SCORE_SMOOTH       = 21     # monthly smoothing — growth is slow-moving
+GROWTH_DELTA_WINDOW       = 21     # monthly delta for direction (accelerating/decelerating)
+GROWTH_CONFIRM_WINDOW     = 21     # monthly confirmation window
+GROWTH_CONFIRM_MIN        = 15     # 71% agreement before regime switch
+GROWTH_WEIGHT_YIELD_CURVE = 2.0   # most reliable leading indicator (6-12mo lead)
+GROWTH_WEIGHT_COPPER_GOLD = 2.0   # 3-6mo lead — best real-time growth proxy
+GROWTH_WEIGHT_EQUITY      = 1.5   # coincident — majority of stocks in uptrend
+GROWTH_WEIGHT_BOND        = 1.0   # coincident — credit conditions supportive
+GROWTH_WEIGHT_USD         = 1.0   # coincident-lagging — weak dollar = global growth supportive
+GROWTH_WEIGHT_EM          = 0.5   # coincident — no EM stress = global growth intact
+GROWTH_WEIGHT_PMI         = 1.5   # coincident — only used when macro_df has PMI
+
 # ── HMM ───────────────────────────────────────────────────────────────────────
 HMM_N_COMPONENTS    = 4
 HMM_N_ITER          = 200

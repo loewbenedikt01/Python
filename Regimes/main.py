@@ -29,16 +29,17 @@ from plots import (
     plot_commodity_regime,
     plot_crypto_regime,
     plot_forex_regime,
+    plot_growth_regime,
 )
 
 # ── Toggle what to run ────────────────────────────────────────────────────────
 RUN_EQUITY    = False
 RUN_BOND      = False
 RUN_FOREX     = False
-RUN_COMMODITY = True
+RUN_COMMODITY = False
 RUN_CRYPTO    = False
 
-RUN_GROWTH    = False
+RUN_GROWTH    = True
 RUN_INFLATION = False
 RUN_LIQUIDITY = False
 RUN_RISK      = False
@@ -46,6 +47,10 @@ RUN_RISK      = False
 RUN_HMM       = False
 
 PLOT          = True   # set False for headless / batch runs
+
+# Multi Regime Pre-Processing
+if RUN_GROWTH:
+    RUN_EQUITY = RUN_BOND = RUN_FOREX = RUN_COMMODITY = True
 
 # ── Load all data once ────────────────────────────────────────────────────────
 data = load_all()
@@ -76,7 +81,7 @@ commodity_df = _clip(commodity_df)
 crypto_df    = _clip(crypto_df)
 
 # ── Multi asset regimes (sequential — depend on single regime outputs) ────────
-growth_df    = compute_growth_regime(equity_df, bond_df, commodity_df, data['macro']) \
+growth_df    = compute_growth_regime(equity_df, bond_df, commodity_df, forex_df, data['macro']) \
                if RUN_GROWTH    else None
 inflation_df = compute_inflation_regime(commodity_df, bond_df, data['macro']) \
                if RUN_INFLATION else None
@@ -96,6 +101,8 @@ if PLOT:
         plot_equity_regime(equity_df)
     if bond_df is not None and not bond_df.empty:
         plot_bond_regime(bond_df)
+    if growth_df is not None and not growth_df.empty:
+        plot_growth_regime(growth_df)
     if commodity_df is not None and not commodity_df.empty:
         plot_commodity_regime(commodity_df)
     if crypto_df is not None and not crypto_df.empty:

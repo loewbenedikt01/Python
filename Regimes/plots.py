@@ -4,6 +4,14 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from config import REGIME_COLORS, CURVE_COLORS
 
+GROWTH_REGIME_COLORS = {
+    'Expansion':   '#2ecc71',   # best for risk assets
+    'Slowdown':    '#f39c12',   # late cycle — rising but decelerating
+    'Recovery':    '#3498db',   # below trend but improving — early cycle
+    'Contraction': '#e74c3c',   # recession
+    'Unknown':     '#555577',
+}
+
 COMMODITY_REGIME_COLORS = {
     'Commodity Bull':    '#2ecc71',
     'Commodity Neutral': '#ffc04d',
@@ -453,6 +461,130 @@ def plot_commodity_regime(commodity_df) -> None:
     ax3.set_xlabel('Date', color='#cccccc')
     ax3.legend(loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
                facecolor='#1a1a2e', fontsize=8, ncol=4)
+
+    plt.tight_layout()
+    plt.subplots_adjust(hspace=0.04)
+    plt.show()
+
+
+def plot_growth_regime(growth_df) -> None:
+    from config import GROWTH_THRESHOLD
+    data = growth_df.dropna(subset=['growth_score_smooth']).copy()
+
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3, 1, figsize=(16, 11),
+        gridspec_kw={'height_ratios': [3, 1.5, 1.5]},
+        sharex=True,
+    )
+    fig.patch.set_facecolor('#1a1a2e')
+    _dark_axes(ax1, ax2, ax3)
+
+    # ── Top: Growth score + threshold + 4-quadrant regime shading ────────────
+    _shade(ax1, data, 'growth_regime', GROWTH_REGIME_COLORS, alpha=0.30)
+
+    ax1.plot(data.index, data['growth_score_raw'],
+             color='#ffffff', linewidth=0.8, alpha=0.4, label='Score (raw)')
+    ax1.plot(data.index, data['growth_score_smooth'],
+             color='#f1c40f', linewidth=2.0, label='Score (21d smooth)')
+    ax1.axhline(GROWTH_THRESHOLD, color='#7f8c8d', linewidth=1.2,
+                linestyle='--', alpha=0.8, label=f'Threshold ({GROWTH_THRESHOLD})')
+    ax1.axhline(0.5, color='#555577', linewidth=0.7, linestyle=':', alpha=0.5)
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.set_ylabel('Growth Score (0-1)', color='#cccccc')
+    ax1.set_title('Growth Regime  —  Bridgewater All Weather Quadrant Framework',
+                  color='#ecf0f1', fontsize=13, pad=10)
+
+    # Overlay direction arrow via delta shading
+    if 'growth_score_delta' in data.columns:
+        ax1_r = ax1.twinx()
+        ax1_r.set_facecolor('none')
+        ax1_r.plot(data.index, data['growth_score_delta'],
+                   color='#9b59b6', linewidth=1.0, alpha=0.5, label='Delta (21d)')
+        ax1_r.axhline(0, color='#9b59b6', linewidth=0.6, linestyle=':', alpha=0.4)
+        ax1_r.set_ylabel('Score Delta', color='#9b59b6', fontsize=8)
+        ax1_r.tick_params(colors='#9b59b6')
+        ax1_r.set_ylim(-0.15, 0.15)
+
+    line_handles, _ = ax1.get_legend_handles_labels()
+    regime_patches  = [
+        mpatches.Patch(facecolor=GROWTH_REGIME_COLORS[r], alpha=0.7, label=r)
+        for r in ['Expansion', 'Slowdown', 'Recovery', 'Contraction']
+    ]
+    ax1.legend(handles=line_handles + regime_patches, loc='upper left',
+               framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e', fontsize=8, ncol=2)
+
+    # ── Middle: Leading signals — yield curve + Cu/Au deviation ──────────────
+    ax2_r = ax2.twinx()
+    ax2_r.set_facecolor('none')
+
+    if 'curve_2s10s' in data.columns:
+        ax2.plot(data.index, data['curve_2s10s'],
+                 color='#3498db', linewidth=1.4, label='2s10s Spread (%)')
+        ax2.axhline(0, color='#e74c3c', linewidth=1.0, alpha=0.8)
+        ax2.fill_between(data.index, data['curve_2s10s'], 0,
+                         where=data['curve_2s10s'] < 0,
+                         color='#e74c3c', alpha=0.15, label='Inverted (leading recession)')
+        ax2.set_ylabel('Yield Curve 2s10s (%)', color='#3498db')
+
+    if 'copper_gold_dev' in data.columns:
+        ax2_r.plot(data.index, data['copper_gold_dev'] * 100,
+                   color='#e67e22', linewidth=1.3, alpha=0.8,
+                   linestyle='--', label='Cu/Au vs MA200 (%)')
+        ax2_r.axhline(0, color='#e67e22', linewidth=0.6, linestyle=':', alpha=0.5)
+        ax2_r.set_ylabel('Cu/Au Deviation (%)', color='#e67e22', fontsize=8)
+        ax2_r.tick_params(colors='#e67e22')
+
+    lines1, labels1 = ax2.get_legend_handles_labels()
+    lines2, labels2 = ax2_r.get_legend_handles_labels()
+    ax2.legend(handles=lines1 + lines2, labels=labels1 + labels2,
+               loc='upper right', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+
+    # ── Bottom: Coincident signals — breadth, EM stress, USD ─────────────────
+    if 'equity_breadth' in data.columns:
+        breadth_sm = _smooth_plot(data['equity_breadth'], window=10)
+        ax3.plot(data.index, breadth_sm * 100,
+                 color='#2ecc71', linewidth=1.3, label='Equity Breadth (%)')
+        ax3.axhline(55, color='#2ecc71', linewidth=0.7, linestyle=':', alpha=0.5)
+
+    ax3.set_ylabel('Equity Breadth (%)', color='#cccccc')
+    ax3.set_ylim(0, 100)
+
+    ax3_r = ax3.twinx()
+    ax3_r.set_facecolor('none')
+
+    if 'em_stress' in data.columns:
+        em_sm = _smooth_plot(data['em_stress'], window=10)
+        ax3_r.plot(data.index, em_sm, color='#e74c3c', linewidth=1.3,
+                   alpha=0.8, label='EM Stress (z-score)')
+        ax3_r.axhline(0.5, color='#e74c3c', linewidth=0.7, linestyle=':', alpha=0.5)
+        ax3_r.axhline(0,   color='#7f8c8d', linewidth=0.6, linestyle=':', alpha=0.4)
+
+    # USD regime as background strip at bottom
+    if 'usd_regime' in growth_df.columns:
+        usd_data = growth_df[['usd_regime']].reindex(data.index)
+        usd_colors = {'USD Bull': '#e74c3c', 'USD Neutral': '#ffc04d',
+                      'USD Bear': '#2ecc71', 'Unknown': '#555577'}
+        prev, start = None, data.index[0]
+        for date, val in usd_data['usd_regime'].items():
+            if val != prev:
+                if prev is not None:
+                    ax3.axvspan(start, date, ymin=0, ymax=0.05,
+                                color=usd_colors.get(prev, '#cccccc'), alpha=0.6)
+                start, prev = date, val
+        if prev is not None:
+            ax3.axvspan(start, data.index[-1], ymin=0, ymax=0.05,
+                        color=usd_colors.get(prev, '#cccccc'), alpha=0.6)
+
+    ax3_r.set_ylabel('EM Stress (z-score)', color='#e74c3c', fontsize=8)
+    ax3_r.tick_params(colors='#e74c3c')
+
+    lines3, labels3 = ax3.get_legend_handles_labels()
+    lines4, labels4 = ax3_r.get_legend_handles_labels()
+    ax3.legend(handles=lines3 + lines4, labels=labels3 + labels4,
+               loc='upper left', framealpha=0.3, labelcolor='#ecf0f1',
+               facecolor='#1a1a2e', fontsize=8)
+    ax3.set_xlabel('Date', color='#cccccc')
 
     plt.tight_layout()
     plt.subplots_adjust(hspace=0.04)
