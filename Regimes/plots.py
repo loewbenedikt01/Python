@@ -11,12 +11,10 @@ CRYPTO_REGIME_COLORS = {
 }
 
 FOREX_REGIME_COLORS = {
-    'Risk On':    '#2ecc71',
-    'Late Cycle': '#f39c12',
-    'Stress':     '#e74c3c',
-    'Recession':  '#3498db',
-    'Transition': '#7f8c8d',
-    'Unknown':    '#555577',
+    'Risk On': '#2ecc71',
+    'Neutral': '#ffc04d',
+    'Stress':  '#e74c3c',
+    'Unknown': '#555577',
 }
 
 _STRENGTH_COLORS = {
@@ -283,7 +281,7 @@ def plot_forex_regime(forex_df) -> None:
     line_handles, _ = ax1.get_legend_handles_labels()
     regime_patches  = [
         mpatches.Patch(facecolor=FOREX_REGIME_COLORS[r], alpha=0.6, label=r)
-        for r in ['Risk On', 'Late Cycle', 'Stress', 'Recession', 'Transition']
+        for r in ['Risk On', 'Neutral', 'Stress']
     ]
     ax1.legend(handles=line_handles + regime_patches, loc='upper left',
                framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e', fontsize=8)
@@ -298,8 +296,11 @@ def plot_forex_regime(forex_df) -> None:
         ax2.plot(data.index, data['audjpy'], color='#ffffff', linewidth=0.9,
                  alpha=0.6, label='AUD/JPY')
     if 'audjpy_ma50' in data.columns:
-        ax2.plot(data.index, data['audjpy_ma50'], color='#3498db', linewidth=1.4,
-                 label='AUD/JPY MA50')
+        ax2.plot(data.index, data['audjpy_ma50'], color='#3498db', linewidth=1.2,
+                 linestyle=':', alpha=0.7, label='MA50')
+    if 'audjpy_ma200' in data.columns:
+        ax2.plot(data.index, data['audjpy_ma200'], color='#f1c40f', linewidth=1.5,
+                 label='MA200')
     ax2.set_ylabel('AUD/JPY (Carry)', color='#cccccc')
 
     carry_patches = [mpatches.Patch(facecolor=CARRY_COLORS[r], alpha=0.6, label=r)
@@ -313,7 +314,10 @@ def plot_forex_regime(forex_df) -> None:
         if col not in data.columns:
             continue
         label  = col.replace('strength_', '').upper()
-        series = _smooth_plot(data[col], window=5)
+        # Winsorise at 1st/99th percentile to prevent 2008/2020 spikes compressing the panel
+        raw    = data[col]
+        clipped = raw.clip(raw.quantile(0.01), raw.quantile(0.99))
+        series  = _smooth_plot(clipped, window=15)
         ax3.plot(data.index, series, color=color, linewidth=1.3, label=label)
 
     ax3.axhline(0, color='#7f8c8d', linewidth=0.8, linestyle=':')

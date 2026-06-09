@@ -9,6 +9,7 @@ from config import (
     FOREX_EUROPE_BULL_ENTRY, FOREX_EUROPE_BEAR_ENTRY,
     FOREX_EM_STRESS_THRESHOLD, FOREX_EM_RELIEF_THRESHOLD,
     FOREX_CONFIRM_WINDOW, FOREX_CONFIRM_MIN,
+    FOREX_MASTER_CONFIRM_WINDOW, FOREX_MASTER_CONFIRM_MIN, FOREX_MIN_PAIRS,
 )
 
 # ── Currency pair definitions ─────────────────────────────────────────────────
@@ -137,17 +138,23 @@ def compute_usd_regime(close: pd.DataFrame) -> pd.DataFrame:
         return out
 
     dxy = close['DX-Y.NYB']
+    dxy_s                       = _smooth(dxy, window=5)
     out['dxy']                  = dxy
     out['dxy_ma50']             = _smooth(dxy, window=FOREX_MA50_WINDOW)
     out['dxy_ma200']            = _smooth(dxy, window=FOREX_MA200_WINDOW)
     out['dxy_momentum']         = dxy.dropna().pct_change(FOREX_MOMENTUM_WINDOW).reindex(close.index)
     out['dxy_momentum_smooth']  = _smooth(out['dxy_momentum'], window=FOREX_SCORE_SMOOTH)
 
-    out['sig_usd_above_ma200']  = (dxy > out['dxy_ma200']).astype(float)
-    out['sig_usd_above_ma50']   = (dxy > out['dxy_ma50']).astype(float)
+    # Signal 1: DXY above long-term trend
+    out['sig_usd_above_ma200']  = (dxy_s > out['dxy_ma200']).astype(float)
+    # Signal 2: 63d momentum — independent of level
     out['sig_usd_momentum']     = (out['dxy_momentum_smooth'] > 0).astype(float)
+    # Signal 3: DXY making higher 126d highs vs 21 days ago — trend acceleration,
+    # uncorrelated with whether price is above/below MA
+    roll_max                    = dxy.dropna().rolling(126).max().reindex(close.index)
+    out['sig_usd_trend_accel']  = (roll_max > roll_max.shift(21)).astype(float)
 
-    score = out[['sig_usd_above_ma200', 'sig_usd_above_ma50', 'sig_usd_momentum']].sum(axis=1)
+    score = out[['sig_usd_above_ma200', 'sig_usd_momentum', 'sig_usd_trend_accel']].sum(axis=1)
     out['usd_bull_score']  = score
     out['usd_regime'] = _score_to_regime(
         score, FOREX_USD_BULL_ENTRY, FOREX_USD_BEAR_ENTRY,
@@ -158,7 +165,7 @@ def compute_usd_regime(close: pd.DataFrame) -> pd.DataFrame:
 
 # ── 3. Carry regime ───────────────────────────────────────────────────────────
 
-def compute_carry_regime(close: pd.DataFrame, strength_df: pd.DataFrame) -> pd.DataFrame:
+def compute_carry_regime(close: pd.DataFrame) -> pd.DataFrame:
     """
     AUD/JPY is the single best carry proxy — captures high-yield vs safe-haven in one pair.
     3 signals → Carry Bull (risk-on) / Neutral / Carry Bear (risk-off).
@@ -170,19 +177,42 @@ def compute_carry_regime(close: pd.DataFrame, strength_df: pd.DataFrame) -> pd.D
         out['carry_regime'] = 'Unknown'
         return out
 
-    audjpy = audjpy.dropna()
-    out['audjpy']           = audjpy.reindex(close.index)
-    out['audjpy_ma50']      = _smooth(audjpy, window=FOREX_MA50_WINDOW).reindex(close.index)
-    out['audjpy_momentum']  = audjpy.pct_change(21).rolling(10, min_periods=5).mean().reindex(close.index)
+    audjpy    = audjpy.dropna()
+    audjpy_s  = _smooth(audjpy, window=10)
+    out['audjpy']          = audjpy.reindex(close.index)
+    out['audjpy_ma50']     = _smooth(audjpy, window=FOREX_MA50_WINDOW).reindex(close.index)
+    out['audjpy_ma200']    = _smooth(audjpy, window=FOREX_MA200_WINDOW).reindex(close.index)
+    out['audjpy_momentum'] = audjpy.pct_change(FOREX_MOMENTUM_WINDOW).reindex(close.index)
 
-    aud_str = strength_df.get('strength_aud', pd.Series(dtype=float))
-    jpy_str = strength_df.get('strength_jpy', pd.Series(dtype=float))
+    # Signal 1: level vs MA200 (slow trend)
+    out['sig_audjpy_vs_ma200'] = (
+        audjpy_s.reindex(close.index) > out['audjpy_ma200']
+    ).astype(float)
 
-    out['sig_audjpy_trend'] = (audjpy.reindex(close.index) > out['audjpy_ma50']).astype(float)
-    out['sig_aud_strong']   = (aud_str.reindex(close.index) > 0).astype(float)
-    out['sig_jpy_weak']     = (jpy_str.reindex(close.index) < 0).astype(float)
+    # Signal 2: 63d momentum — independent of level; price can be above MA200
+    # yet momentum decelerating, giving an early warning
+    out['sig_audjpy_momentum'] = (
+        _smooth(out['audjpy_momentum'], window=15) > 0
+    ).astype(float)
 
-    score = out[['sig_audjpy_trend', 'sig_aud_strong', 'sig_jpy_weak']].sum(axis=1)
+    # Signal 3: NZD/JPY as independent carry confirmation — different high-yield
+    # currency (NZD) vs safe-haven (JPY), so it's not driven by AUD-specific factors
+    nzdjpy = close.get('NZDJPY=X')
+    if nzdjpy is not None:
+        nzdjpy_ma200               = _smooth(nzdjpy, window=FOREX_MA200_WINDOW)
+        out['sig_nzdjpy_vs_ma200'] = (
+            _smooth(nzdjpy, window=10).reindex(close.index) > nzdjpy_ma200.reindex(close.index)
+        ).astype(float)
+    else:
+        out['sig_nzdjpy_vs_ma200'] = out['sig_audjpy_vs_ma200']  # fallback
+
+    # Level signal weighted 2× — it's the primary driver; momentum and NZD/JPY are confirmations.
+    # Score range: 0-4 (matches FOREX_CARRY_BULL_ENTRY=3.0, FOREX_CARRY_BEAR_ENTRY=1.0)
+    score = (
+        out['sig_audjpy_vs_ma200'] * 2 +
+        out['sig_audjpy_momentum'] * 1 +
+        out['sig_nzdjpy_vs_ma200'] * 1
+    )
     out['carry_bull_score'] = score
     out['carry_regime'] = _score_to_regime(
         score, FOREX_CARRY_BULL_ENTRY, FOREX_CARRY_BEAR_ENTRY,
@@ -316,20 +346,20 @@ def compute_europe_regime(close: pd.DataFrame, strength_df: pd.DataFrame) -> pd.
 
 def compute_forex_regime(df_forex: pd.DataFrame) -> pd.DataFrame:
     """
-    Combines USD × Carry into a 4-quadrant master regime plus sub-regime detail.
+    Master regime driven by pure price action on two instruments: DXY and AUD/JPY.
+    Sub-regimes (USD, carry, EM, JPY, Europe) are computed but kept as metadata only
+    — they feed the multi-asset regimes later rather than driving the master label.
 
     Master regime states:
-      Risk On    — USD Bear  + Carry Bull (goldilocks: dollar weak, risk appetite high)
-      Late Cycle — USD Bull  + Carry Bull (dollar rising but risk still on — late cycle)
-      Stress     — USD Bull  + Carry Bear (dollar surging, safe havens bid — crisis)
-      Recession  — USD Bear  + Carry Bear (deflation: dollar falling, risk-off — slump)
-      Transition — neither USD nor Carry clearly committed
+      Risk On — carry working and dollar not dominant (carry_bull & ~usd_bull)
+      Stress  — dollar surging and carry off       (usd_bull & carry_bear)
+      Neutral — everything else
     """
     close = df_forex['Close'].unstack('Ticker')
 
     strength_df  = compute_currency_strength(close)
     usd_df       = compute_usd_regime(close)
-    carry_df     = compute_carry_regime(close, strength_df)
+    carry_df     = compute_carry_regime(close)
     em_df        = compute_dm_em_regime(close)
     jpy_df       = compute_jpy_regime(close)
     europe_df    = compute_europe_regime(close, strength_df)
@@ -339,19 +369,51 @@ def compute_forex_regime(df_forex: pd.DataFrame) -> pd.DataFrame:
         axis=1,
     )
 
-    usd_bull   = forex_df['usd_regime']   == 'USD Bull'
-    usd_bear   = forex_df['usd_regime']   == 'USD Bear'
-    carry_bull = forex_df['carry_regime'] == 'Carry Bull'
-    carry_bear = forex_df['carry_regime'] == 'Carry Bear'
+    # ── Price-action master regime — DXY × AUD/JPY ───────────────────────────
+    # Score-then-hysteresis fights forex's zero-sum nature (USD up = EUR/AUD down
+    # simultaneously, so signals always partially cancel). Two instruments,
+    # two MA200s, percentage buffers as hysteresis — simpler and more stable.
+    dxy    = close.get('DX-Y.NYB')
+    audjpy = close.get('AUDJPY=X')
 
-    forex_df['forex_regime'] = np.select(
-        [usd_bear  & carry_bull,
-         usd_bull  & carry_bull,
-         usd_bull  & carry_bear,
-         usd_bear  & carry_bear],
-        ['Risk On', 'Late Cycle', 'Stress', 'Recession'],
-        default='Transition',
-    )
+    if dxy is None or audjpy is None:
+        forex_df['forex_regime'] = 'Unknown'
+    else:
+        dxy_ma200    = dxy.rolling(FOREX_MA200_WINDOW, min_periods=FOREX_MA200_WINDOW // 2).mean()
+        audjpy_ma200 = audjpy.rolling(FOREX_MA200_WINDOW, min_periods=FOREX_MA200_WINDOW // 2).mean()
+
+        # 20-day price smooth — eliminates daily MA crossings without a second parameter
+        dxy_sm    = dxy.rolling(20, min_periods=10).mean()
+        audjpy_sm = audjpy.rolling(20, min_periods=10).mean()
+
+        forex_df['dxy_smooth']    = dxy_sm
+        forex_df['audjpy_smooth'] = audjpy_sm
+
+        # 2% buffer on DXY, 1% on AUD/JPY (FX pairs have tighter percentage ranges)
+        usd_bull   = dxy_sm    > dxy_ma200    * 1.02
+        carry_bull = audjpy_sm > audjpy_ma200 * 1.01
+        carry_bear = audjpy_sm < audjpy_ma200 * 0.99
+
+        # Risk On fires whenever carry is working and dollar is not dominant —
+        # this covers both USD Neutral + carry bull and USD Bear + carry bull.
+        master_raw = pd.Series(
+            np.select(
+                [carry_bull & ~usd_bull,
+                 usd_bull   &  carry_bear],
+                ['Risk On', 'Stress'],
+                default='Neutral',
+            ),
+            index=close.index,
+        )
+
+        coverage   = close.notna().sum(axis=1)
+        master_raw = master_raw.where(coverage >= FOREX_MIN_PAIRS, 'Unknown')
+
+        forex_df['forex_regime'] = _confirm(
+            master_raw,
+            {'Risk On': 2, 'Neutral': 1, 'Stress': 0, 'Unknown': -1},
+            FOREX_MASTER_CONFIRM_WINDOW, FOREX_MASTER_CONFIRM_MIN,
+        )
 
     # ── snapshot print ────────────────────────────────────────────────────────
     valid    = forex_df.dropna(subset=['usd_bull_score'])
@@ -367,7 +429,7 @@ def compute_forex_regime(df_forex: pd.DataFrame) -> pd.DataFrame:
     print(f'  {"Europe Regime:":<28} {latest["europe_regime"]}')
 
     print('\n  --- Forex Regime Distribution (full history) ---')
-    for state in ['Risk On', 'Late Cycle', 'Stress', 'Recession', 'Transition']:
+    for state in ['Risk On', 'Neutral', 'Stress', 'Unknown']:
         pct = (forex_df['forex_regime'] == state).mean()
         print(f'  {state:<14} {pct:>5.1%}  {"#"*int(pct*40)}')
     print()

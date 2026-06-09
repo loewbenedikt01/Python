@@ -64,20 +64,23 @@ FOREX_MA50_WINDOW          = 50
 FOREX_MA200_WINDOW         = 200
 FOREX_MOMENTUM_WINDOW      = 63    # days for rate-of-change signals
 FOREX_STRENGTH_WINDOW      = 20    # days for cross-pair pct change in currency strength
-FOREX_SCORE_SMOOTH         = 10    # smooth 0-N score before hysteresis
+FOREX_SCORE_SMOOTH         = 15    # smooth 0-N score before hysteresis
 FOREX_EM_NORM_WINDOW       = 252   # days for EM z-score normalisation
-FOREX_USD_BULL_ENTRY       = 2.0   # smoothed score >= 2 of 3 → USD Bull
-FOREX_USD_BEAR_ENTRY       = 1.0
-FOREX_CARRY_BULL_ENTRY     = 2.0
+FOREX_USD_BULL_ENTRY       = 2.5   # smoothed score >= 2.5/3 → USD Bull
+FOREX_USD_BEAR_ENTRY       = 0.5
+FOREX_CARRY_BULL_ENTRY     = 3.0   # weighted score: level*2 + momentum + nzdjpy (0-4)
 FOREX_CARRY_BEAR_ENTRY     = 1.0
-FOREX_JPY_BULL_ENTRY       = 2.0   # JPY Bull = risk-off (safe-haven demand)
-FOREX_JPY_BEAR_ENTRY       = 1.0
-FOREX_EUROPE_BULL_ENTRY    = 2.0
-FOREX_EUROPE_BEAR_ENTRY    = 1.0
+FOREX_JPY_BULL_ENTRY       = 2.5   # JPY Bull = risk-off (safe-haven demand)
+FOREX_JPY_BEAR_ENTRY       = 0.5
+FOREX_EUROPE_BULL_ENTRY    = 2.5
+FOREX_EUROPE_BEAR_ENTRY    = 0.5
 FOREX_EM_STRESS_THRESHOLD  = 1.0   # z-score above this → EM Stress
 FOREX_EM_RELIEF_THRESHOLD  = -0.5  # z-score below this → EM Relief
-FOREX_CONFIRM_WINDOW       = 5
-FOREX_CONFIRM_MIN          = 4
+FOREX_CONFIRM_WINDOW       = 7    # sub-regime confirmation
+FOREX_CONFIRM_MIN          = 5
+FOREX_MASTER_CONFIRM_WINDOW = 15  # master regime needs wider window — two sub-regimes must agree
+FOREX_MASTER_CONFIRM_MIN    = 11  # ~75% agreement
+FOREX_MIN_PAIRS            = 10   # min pairs with valid data before master regime is assigned
 
 # ── Commodity Regime ──────────────────────────────────────────────────────────
 COMMODITY_TREND_WINDOW   = 200
