@@ -1,14 +1,14 @@
 import pandas as pd
 import numpy as np
 from config import (
-    BOND_BULL_ENTRY, BOND_BEAR_ENTRY,
+    BOND_BULL_ENTRY, BOND_BULL_EXIT, BOND_BEAR_ENTRY, BOND_BEAR_EXIT,
     BOND_CURVE_STEEP_THRESHOLD, BOND_CURVE_FLAT_THRESHOLD,
     BOND_MOMENTUM_THRESHOLD, BOND_MOMENTUM_WINDOW,
     BOND_REAL_YIELD_HIGH, BOND_REAL_YIELD_LOW,
     BOND_CURVE_SMOOTH, BOND_MOMENTUM_SMOOTH, BOND_REAL_YIELD_SMOOTH,
     BOND_REAL_YIELD_NORM_WINDOW, BOND_TLT_SMOOTH,
     BOND_MA50_WINDOW, BOND_MA200_WINDOW, BOND_SHY_REL_WINDOW,
-    BOND_CONFIRM_WINDOW, BOND_CONFIRM_MIN,
+    BOND_SCORE_SMOOTH, BOND_CONFIRM_WINDOW, BOND_CONFIRM_MIN,
 )
 
 _BOND_REGIME_TO_NUM = {'Bond Bull': 2, 'Bond Neutral': 1, 'Bond Bear': 0, 'Unknown': -1}
@@ -35,14 +35,17 @@ def _apply_bond_hysteresis(score_series: pd.Series) -> list:
             else:                          state = 'Bond Neutral'
 
         elif state == 'Bond Bull':
+            # Exit Bull only when score drops to BOND_BULL_EXIT (1 unit below entry)
+            # prevents exiting on small dips that don't represent a real regime change
             if   score <= BOND_BEAR_ENTRY: state = 'Bond Bear'
-            elif score <  BOND_BULL_ENTRY: state = 'Bond Neutral'
+            elif score <  BOND_BULL_EXIT:  state = 'Bond Neutral'
 
         elif state == 'Bond Bear':
+            # Exit Bear only when score rises to BOND_BEAR_EXIT (1 unit above entry)
             if   score >= BOND_BULL_ENTRY: state = 'Bond Bull'
-            elif score >  BOND_BEAR_ENTRY: state = 'Bond Neutral'
+            elif score >  BOND_BEAR_EXIT:  state = 'Bond Neutral'
 
-        else:  # Bond Neutral
+        else:  # Bond Neutral — still requires full entry threshold to commit
             if   score >= BOND_BULL_ENTRY: state = 'Bond Bull'
             elif score <= BOND_BEAR_ENTRY: state = 'Bond Bear'
 
@@ -112,9 +115,13 @@ def compute_bond_regime(df_bonds: pd.DataFrame) -> pd.DataFrame:
     bond_df['sig_real_falling']   = (bond_df['real_yield_proxy_smooth'] >  BOND_REAL_YIELD_HIGH).astype(float)
 
     sig_cols = ['sig_curve_ok', 'sig_yields_falling', 'sig_tlt_uptrend', 'sig_real_falling']
-    bond_df['bond_bull_score'] = bond_df[sig_cols].sum(axis=1)
+    # fillna(0): sig_real_falling is NaN before ~2003 (TIP/IEF data); treat as abstaining
+    bond_df['bond_bull_score']        = bond_df[sig_cols].fillna(0).sum(axis=1)
+    bond_df['bond_bull_score_smooth'] = _smooth(bond_df['bond_bull_score'], window=BOND_SCORE_SMOOTH)
 
-    raw_regime = _apply_bond_hysteresis(bond_df['bond_bull_score'])
+    # Feed smoothed continuous score — prevents single-signal integer flips from
+    # instantly crossing the bull/bear thresholds every day
+    raw_regime = _apply_bond_hysteresis(bond_df['bond_bull_score_smooth'])
     bond_df['bond_regime_raw'] = raw_regime
 
     regime_num    = bond_df['bond_regime_raw'].map(_BOND_REGIME_TO_NUM).astype(float)
@@ -122,6 +129,7 @@ def compute_bond_regime(df_bonds: pd.DataFrame) -> pd.DataFrame:
         regime_num
         .rolling(BOND_CONFIRM_WINDOW)
         .apply(lambda x: x[-1] if (x == x[-1]).sum() >= BOND_CONFIRM_MIN else np.nan, raw=True)
+        .bfill()
         .ffill()
     )
     bond_df['bond_regime'] = confirmed_num.map(_BOND_NUM_TO_REGIME).fillna('Unknown')
@@ -140,7 +148,8 @@ def compute_bond_regime(df_bonds: pd.DataFrame) -> pd.DataFrame:
     print(f'  {"Policy Direction:":<28} {latest["policy_direction"]}')
     print(f'  {"Real Yield Regime:":<28} {latest["real_yield_regime"]}')
     print(f'  {"Duration Trend (TLT):":<28} {latest["tlt_trend"]}')
-    print(f'  {"Bull Score:":<28} {int(latest["bond_bull_score"])}/4')
+    print(f'  {"Bull Score (raw):":<28} {int(latest["bond_bull_score"])}/4')
+    print(f'  {"Bull Score (smooth):":<28} {latest["bond_bull_score_smooth"]:.2f}/4')
 
     print('\n  --- Signal Breakdown ---')
     for col, label in [

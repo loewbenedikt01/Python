@@ -40,8 +40,10 @@ EQUITY_CONFIRM_WINDOW  = 7
 EQUITY_CONFIRM_MIN     = 5
 
 # ── Bond Regime ───────────────────────────────────────────────────────────────
-BOND_BULL_ENTRY             = 3
-BOND_BEAR_ENTRY             = 1
+BOND_BULL_ENTRY             = 3.0   # smoothed score must reach ≥ 3 to enter Bull
+BOND_BULL_EXIT              = 2.0   # exit Bull only when score drops below 2 (1-unit dead band)
+BOND_BEAR_ENTRY             = 1.0   # smoothed score must drop ≤ 1 to enter Bear
+BOND_BEAR_EXIT              = 2.0   # exit Bear only when score rises above 2
 BOND_CURVE_STEEP_THRESHOLD  = 1.0
 BOND_CURVE_FLAT_THRESHOLD   = -0.5
 BOND_MOMENTUM_THRESHOLD     = 0.5   # % change in 10yr yield over BOND_MOMENTUM_WINDOW
@@ -56,8 +58,9 @@ BOND_TLT_SMOOTH             = 5
 BOND_MA50_WINDOW            = 50
 BOND_MA200_WINDOW           = 200
 BOND_SHY_REL_WINDOW         = 50
-BOND_CONFIRM_WINDOW         = 5
-BOND_CONFIRM_MIN            = 4
+BOND_SCORE_SMOOTH           = 20   # bond signals are slow; wider smooth before hysteresis
+BOND_CONFIRM_WINDOW         = 21   # monthly window — bond regimes hold for months not days
+BOND_CONFIRM_MIN            = 16   # ~76% agreement
 
 # ── Forex Regime ──────────────────────────────────────────────────────────────
 FOREX_MA50_WINDOW          = 50
