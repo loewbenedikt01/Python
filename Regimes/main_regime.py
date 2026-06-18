@@ -33,13 +33,13 @@ from plots import (
 )
 
 # ── Toggle what to run ────────────────────────────────────────────────────────
-RUN_EQUITY    = False
+RUN_EQUITY    = True
 RUN_BOND      = False
 RUN_FOREX     = False
 RUN_COMMODITY = False
 RUN_CRYPTO    = False
 
-RUN_GROWTH    = True
+RUN_GROWTH    = False
 RUN_INFLATION = False
 RUN_LIQUIDITY = False
 RUN_RISK      = False

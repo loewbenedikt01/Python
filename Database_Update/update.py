@@ -327,6 +327,86 @@ def fetch_fred(series_ids, start, end):
     return pd.concat(frames, axis=1) if frames else pd.DataFrame()
 
 
+# ─── Market-cap backfill ──────────────────────────────────────────────────────
+
+def fetch_current_mcaps(tickers: list) -> dict:
+    """
+    Fetch current market cap via Yahoo Finance's batch quote endpoint.
+    Sends 100 tickers per request — no per-ticker sessions, no crumb issues.
+    """
+    CHUNK   = 100
+    HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    URL     = 'https://query2.finance.yahoo.com/v8/finance/quote'
+
+    chunks  = [tickers[i:i + CHUNK] for i in range(0, len(tickers), CHUNK)]
+    mcap_map = {}
+
+    print(f'  Fetching market caps for {len(tickers)} tickers ({len(chunks)} batches) ...')
+    for i, chunk in enumerate(chunks, 1):
+        try:
+            resp = requests.get(
+                URL,
+                params={'symbols': ','.join(chunk), 'fields': 'marketCap,symbol'},
+                headers=HEADERS,
+                timeout=30,
+            )
+            if resp.ok:
+                for item in resp.json().get('quoteResponse', {}).get('result', []):
+                    mcap = item.get('marketCap')
+                    sym  = item.get('symbol')
+                    if mcap and mcap > 0 and sym:
+                        mcap_map[sym] = float(mcap)
+            else:
+                print(f'    [WARN] batch {i}: HTTP {resp.status_code}')
+        except Exception as e:
+            print(f'    [WARN] batch {i}: {e}')
+
+        if i % 5 == 0 or i == len(chunks):
+            print(f'    {min(i * CHUNK, len(tickers))}/{len(tickers)} done ...')
+
+    print(f'  Received {len(mcap_map)}/{len(tickers)} market caps.')
+    return mcap_map
+
+
+def backfill_market_cap(path: str, mcap_map: dict) -> None:
+    """
+    Add / refresh the Market_Cap column in an equity parquet file.
+
+    Formula: historical_mcap(t) = close(t) / close_today × current_mcap
+    Assumes shares outstanding is constant — valid as a first-order approximation.
+    """
+    if not os.path.exists(path):
+        return
+
+    df = pd.read_parquet(path)
+    if df.empty or 'Close' not in df.columns:
+        return
+
+    close = df['Close'].unstack(level='Ticker')
+    tickers = close.columns.tolist()
+
+    current_mcaps = pd.Series({t: mcap_map.get(t) for t in tickers}, dtype=float)
+    last_close = close.apply(
+        lambda col: col.dropna().iloc[-1] if col.dropna().size else float('nan')
+    )
+
+    # scale[ticker] = current_mcap / last_close  →  multiply × historical close
+    scale     = current_mcaps / last_close
+    mcap_wide = close.multiply(scale, axis='columns')
+
+    try:
+        mcap_long = mcap_wide.stack(future_stack=True).rename('Market_Cap')
+    except TypeError:
+        mcap_long = mcap_wide.stack().rename('Market_Cap')
+    mcap_long.index.names = ['Date', 'Ticker']
+
+    df['Market_Cap'] = mcap_long.reindex(df.index)
+    df.to_parquet(path)
+
+    covered = int(current_mcaps.notna().sum())
+    print(f'  Market_Cap: {covered}/{len(tickers)} tickers -> {os.path.basename(path)}')
+
+
 # ─── Group updaters ───────────────────────────────────────────────────────────
 
 def update_yfinance_group(
@@ -440,6 +520,26 @@ def main():
     print('\n[Macro (FRED)]')
     try:
         update_fred_group(ticker_macro, 'macro.parquet')
+    except Exception as e:
+        print(f'  [ERROR] {e}')
+
+    print('\n[Market Cap Backfill]')
+    equity_files = [
+        (ticker_us,      'US_equities.parquet'),
+        (ticker_asia,    'ASIA_equities.parquet'),
+        (ticker_europe,  'EU_equities.parquet'),
+        (ticker_de,      'DE_equities.parquet'),
+        (ticker_rotw,    'ROTW_equities.parquet'),
+    ]
+    all_equity_tickers = list({t for tickers, _ in equity_files for t in to_list(tickers)})
+    try:
+        mcap_map = fetch_current_mcaps(all_equity_tickers)
+        for tickers, filename in equity_files:
+            path = os.path.join(DATABASE_DIR, filename)
+            try:
+                backfill_market_cap(path, mcap_map)
+            except Exception as e:
+                print(f'  [ERROR] {filename}: {e}')
     except Exception as e:
         print(f'  [ERROR] {e}')
 
