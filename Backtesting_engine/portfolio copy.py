@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import pandas as pd
 import numpy as np
 
@@ -11,6 +5,11 @@ import numpy as np
 _DM_ROTW = {'Australia', 'Canada', 'Switzerland', 'United Kingdom'}
 _DM_ASIA = {'Hong Kong', 'Japan', 'Singapore', 'South Korea'}
 
+
+# ── Date Range ────────────────────────────────────────────────────────────────
+START_DATA  = '2000-01-01'   # data loaded from here (warmup for MAs)
+START_DATE  = '2001-01-01'   # regime analysis starts here (post warmup)
+END_DATE    = '2025-12-31'
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DATABASE_DIR = r'C:\Users\benel\Coding\Python\Database'
@@ -142,13 +141,35 @@ HMM_N_COMPONENTS    = 4
 HMM_N_ITER          = 200
 HMM_COVARIANCE_TYPE = 'full'
 
+# ── Colours ───────────────────────────────────────────────────────────────────
+REGIME_COLORS = {
+    # Equity (3-state — matches bond and crypto structure)
+    'Bull':    '#2ecc71',
+    'Neutral': '#ffc04d',
+    'Bear':    '#e74c3c',
+    # Bond
+    'Bond Bull':          '#2ecc71',
+    'Bond Neutral':       '#ffc04d',
+    'Bond Bear':          '#e74c3c',
+    # Master
+    'Goldilocks':         '#2ecc71',
+    'Overheating':        '#f39c12',
+    'Stagflation':        '#e74c3c',
+    'Deflation':          '#3498db',
+    'Transition':         '#7f8c8d',
+    # Generic
+    'Unknown':            '#555577',
+}
 
-_EQUITY_REGIME_TO_NUM = {'Bull': 2, 'Neutral': 1, 'Bear': 0, 'Unknown': -1}
-_EQUITY_NUM_TO_REGIME = {v: k for k, v in _EQUITY_REGIME_TO_NUM.items()}
-_BOND_REGIME_TO_NUM = {'Bond Bull': 2, 'Bond Neutral': 1, 'Bond Bear': 0, 'Unknown': -1}
-_BOND_NUM_TO_REGIME = {v: k for k, v in _BOND_REGIME_TO_NUM.items()}
-_COMMODITY_REGIME_TO_NUM = {'Commodity Bull': 2, 'Commodity Neutral': 1, 'Commodity Bear': 0, 'Unknown': -1}
-_COMMODITY_NUM_TO_REGIME = {v: k for k, v in _COMMODITY_REGIME_TO_NUM.items()}
+CURVE_COLORS = {
+    'Steep':    '#2ecc71',
+    'Normal':   '#3498db',
+    'Flat':     '#ffc04d',
+    'Inverted': '#e74c3c',
+}
+
+_REGIME_TO_NUM = {'Bull': 2, 'Neutral': 1, 'Bear': 0, 'Unknown': -1}
+_NUM_TO_REGIME = {v: k for k, v in _REGIME_TO_NUM.items()}
 
 
 def _apply_hysteresis(smooth: pd.Series) -> list:
@@ -162,126 +183,22 @@ def _apply_hysteresis(smooth: pd.Series) -> list:
             continue
 
         if state is None:
-            # Simple Regime
-            if      val >= EQUITY_BULL_THRESHOLD:           state = 'Equity Bull'
-            elif    val <= EQUITY_BEAR_THRESHOLD:           state = 'Equity Bear'
-            elif    val <  EQUITY_BULL_THRESHOLD and  val > EQUITY_BEAR_THRESHOLD: state = 'Equity Neutral'
-            elif    val >= BOND_BULL_THRESHOLD:             state = 'Bond Bull'
-            elif    val <= BOND_BEAR_THRESHOLD:             state = 'BOND Bear'
-            elif    val <  BOND_BULL_THRESHOLD and  val > BOND_BEAR_THRESHOLD: state = 'Bond Neutral'
-            elif    val >= COMMODITY_BULL_THRESHOLD:        state = 'Commodity Bull'
-            elif    val <= COMMODITY_BEAR_THRESHOLD:        state = 'Commodity Bear'
-            elif    val <  COMMODITY_BULL_THRESHOLD and  val > COMMODITY_BEAR_THRESHOLD: state = 'Commodity Neutral'
-            elif    val >= CRYPTO_BULL_THRESHOLD:           state = 'Crypto Bull'
-            elif    val <= CRYPTO_BEAR_THRESHOLD:           state = 'Crypto Bear'
-            elif    val <  CRYPTO_BULL_THRESHOLD and  val > CRYPTO_BEAR_THRESHOLD: state = 'Crypto Neutral'
-            elif    val >= FOREX_BULL_THRESHOLD:            state = 'Forex Bull'
-            elif    val <= FOREX_BEAR_THRESHOLD:            state = 'Forex Bear'
-            elif    val <  FOREX_BULL_THRESHOLD and  val > FOREX_BEAR_THRESHOLD: state = 'Forex Neutral'
-
-            # Multi Regime
-            elif    val >= GROWTH_BULL_THRESHOLD:           state = 'Growth Bull'
-            elif    val <= GROWTH_BEAR_THRESHOLD:           state = 'Growth Bear'
-            elif    val <  GROWTH_BULL_THRESHOLD and  val > GROWTH_BEAR_THRESHOLD: state = 'Growth Neutral'
-            elif    val >= INFLATION_BULL_THRESHOLD:        state = 'Inflation Bull'
-            elif    val <= INFLATION_BEAR_THRESHOLD:        state = 'Inflation Bear'
-            elif    val <  INFLATION_BULL_THRESHOLD and  val > INFLATION_BEAR_THRESHOLD: state = 'Inflation Neutral'
-            elif    val >= LIQUIDITY_BULL_THRESHOLD:        state = 'Liquidity Bull'
-            elif    val <= LIQUIDITY_BEAR_THRESHOLD:        state = 'Liquidity Bear'
-            elif    val <  LIQUIDITY_BULL_THRESHOLD and  val > LIQUIDITY_BEAR_THRESHOLD: state = 'Liquidity Neutral'
-            elif    val >= RISK_APPETITE_BULL_THRESHOLD:    state = 'Risk Appetite Bull'
-            elif    val <= RISK_APPETITE_BEAR_THRESHOLD:    state = 'Risk Appetite Bear'
-            elif    val <  RISK_APPETITE_BULL_THRESHOLD and  val > RISK_APPETITE_BEAR_THRESHOLD: state = 'Risk Appetite Neutral'
-
-            # HMM Regime
-            elif    val >= HMM_BULL_THRESHOLD:              state = 'HMM Bull'
-            elif    val <= HMM_BEAR_THRESHOLD:              state = 'HMM Bear'
-            elif    val <  HMM_BULL_THRESHOLD and  val > HMM_BEAR_THRESHOLD: state = 'HMM Neutral'
-
+            state = 'Bull' if val >= mid else 'Bear'
 
         elif state == 'Bull':
-            # Simple Regime
-            if      val <  EQUITY_BULL_THRESHOLD:           state = 'Neutral'
-            elif    val <  EQUITY_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val <  BOND_BULL_THRESHOLD:             state = 'Neutral'
-            elif    val <  BOND_BEAR_THRESHOLD:             state = 'Bear'
-            elif    val <  COMMODITY_BULL_THRESHOLD:        state = 'Neutral'
-            elif    val <  COMMODITY_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val <  CRYPTO_BULL_THRESHOLD:           state = 'Neutral'
-            elif    val <  CRYPTO_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val <  FOREX_BULL_THRESHOLD:            state = 'Neutral'
-            elif    val <  FOREX_BEAR_THRESHOLD:            state = 'Bear'
-
-            # Multi Regime
-            elif    val <  GROWTH_BULL_THRESHOLD:           state = 'Neutral'
-            elif    val <  GROWTH_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val <  INFLATION_BULL_THRESHOLD:        state = 'Neutral'
-            elif    val <  INFLATION_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val <  LIQUIDITY_BULL_THRESHOLD:        state = 'Neutral'
-            elif    val <  LIQUIDITY_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val <  RISK_APPETITE_BULL_THRESHOLD:    state = 'Neutral'
-            elif    val <  RISK_APPETITE_BEAR_THRESHOLD:    state = 'Bear'
-
-            # HMM Regime
-            elif    val <  HMM_BULL_THRESHOLD:              state = 'Neutral'
-            elif    val <  HMM_BEAR_THRESHOLD:              state = 'Bear'
-
+            if   val <  EQUITY_BEAR_THRESHOLD: state = 'Bear'
+            elif val <  EQUITY_BULL_THRESHOLD: state = 'Neutral'
 
         elif state == 'Bear':
-            # Simple Regime
-            if      val >= EQUITY_BULL_THRESHOLD:           state = 'Bull'
-            elif    val >= EQUITY_BEAR_THRESHOLD:           state = 'Neutral'
-            elif    val >= BOND_BULL_THRESHOLD:             state = 'Bull'
-            elif    val >= BOND_BEAR_THRESHOLD:             state = 'Neutral'
-            elif    val >= COMMODITY_BULL_THRESHOLD:        state = 'Bull'
-            elif    val >= COMMODITY_BEAR_THRESHOLD:        state = 'Neutral'
-            elif    val >= CRYPTO_BULL_THRESHOLD:           state = 'Bull'
-            elif    val >= CRYPTO_BEAR_THRESHOLD:           state = 'Neutral'
-            elif    val >= FOREX_BULL_THRESHOLD:            state = 'Bull'
-            elif    val >= FOREX_BEAR_THRESHOLD:            state = 'Neutral'
-
-            # Multi Regime
-            elif    val >= GROWTH_BULL_THRESHOLD:           state = 'Bull'
-            elif    val >= GROWTH_BEAR_THRESHOLD:           state = 'Neutral'
-            elif    val >= INFLATION_BULL_THRESHOLD:        state = 'Bull'
-            elif    val >= INFLATION_BEAR_THRESHOLD:        state = 'Neutral'
-            elif    val >= LIQUIDITY_BULL_THRESHOLD:        state = 'Bull'
-            elif    val >= LIQUIDITY_BEAR_THRESHOLD:        state = 'Neutral'
-            elif    val >= RISK_APPETITE_BULL_THRESHOLD:    state = 'Bull'
-            elif    val >= RISK_APPETITE_BEAR_THRESHOLD:    state = 'Neutral'
-
-            # HMM Regime
-            elif    val >= HMM_BULL_THRESHOLD:              state = 'Bull'
-            elif    val >= HMM_BEAR_THRESHOLD:              state = 'Neutral'
+            if   val >= EQUITY_BULL_THRESHOLD: state = 'Bull'
+            elif val >= EQUITY_BEAR_THRESHOLD: state = 'Neutral'
 
         else:  # Neutral
-            # Simple Regime
-            if      val >= EQUITY_BULL_THRESHOLD:           state = 'Bull'
-            elif    val <  EQUITY_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val >= BOND_BULL_THRESHOLD:             state = 'Bull'
-            elif    val <  BOND_BEAR_THRESHOLD:             state = 'Bear'
-            elif    val >= COMMODITY_BULL_THRESHOLD:        state = 'Bull'
-            elif    val <  COMMODITY_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val >= CRYPTO_BULL_THRESHOLD:           state = 'Bull'
-            elif    val <  CRYPTO_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val >= FOREX_BULL_THRESHOLD:            state = 'Bull'
-            elif    val <  FOREX_BEAR_THRESHOLD:            state = 'Bear'
-
-            # Multi Regime
-            elif    val >= GROWTH_BULL_THRESHOLD:           state = 'Bull'
-            elif    val <  GROWTH_BEAR_THRESHOLD:           state = 'Bear'
-            elif    val >= INFLATION_BULL_THRESHOLD:        state = 'Bull'
-            elif    val <  INFLATION_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val >= LIQUIDITY_BULL_THRESHOLD:        state = 'Bull'
-            elif    val <  LIQUIDITY_BEAR_THRESHOLD:        state = 'Bear'
-            elif    val >= RISK_APPETITE_BULL_THRESHOLD:    state = 'Bull'
-            elif    val <  RISK_APPETITE_BEAR_THRESHOLD:    state = 'Bear'
-
-            # HMM Regime
-            elif    val >= HMM_BULL_THRESHOLD:              state = 'Bull'
-            elif    val <  HMM_BEAR_THRESHOLD:              state = 'Bear'
+            if   val >= EQUITY_BULL_THRESHOLD: state = 'Bull'
+            elif val <  EQUITY_BEAR_THRESHOLD: state = 'Bear'
 
         regimes.append(state)
+
     return regimes
 
 
