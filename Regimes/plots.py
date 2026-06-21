@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from config import REGIME_COLORS, CURVE_COLORS
+from config import (
+    REGIME_COLORS, CURVE_COLORS,
+    EQUITY_BULL_THRESHOLD, EQUITY_BEAR_THRESHOLD,
+)
 
 GROWTH_REGIME_COLORS = {
     'Expansion':   '#2ecc71',   # best for risk assets
@@ -71,12 +74,15 @@ def _shade(ax, data, col, color_map, alpha=0.25):
                    alpha=alpha, linewidth=0)
 
 
-def plot_equity_regime(regime_df) -> None:
-    region_cols = sorted(
-        c for c in regime_df.columns
-        if c.startswith('breadth_') and c not in _BREADTH_META
-    )
-    data = regime_df.dropna(subset=['breadth_smooth']).copy()
+def plot_equity_regime(continent_dfs: dict, global_df: pd.DataFrame) -> None:
+    # Simple mean of continent breadth_smooth for the top-panel line
+    breadth_mean = pd.concat(
+        {c: cdf['breadth_smooth'] for c, cdf in continent_dfs.items()}, axis=1
+    ).mean(axis=1)
+
+    top = global_df[['global_regime']].copy()
+    top['breadth_mean'] = breadth_mean
+    top = top.dropna(subset=['breadth_mean'])
 
     fig, (ax1, ax2) = plt.subplots(
         2, 1, figsize=(16, 9),
@@ -86,16 +92,12 @@ def plot_equity_regime(regime_df) -> None:
     fig.patch.set_facecolor('#1a1a2e')
     _dark_axes(ax1, ax2)
 
-    _shade(ax1, data, 'equity_regime', REGIME_COLORS)
+    _shade(ax1, top, 'global_regime', REGIME_COLORS)
 
-    ax1.plot(data.index, data['breadth_weighted'] * 100,
-             color='#ffffff', linewidth=0.8, alpha=0.5, label='Daily breadth')
-    ax1.plot(data.index, data['breadth_smooth'] * 100,
-             color='#f1c40f', linewidth=1.8, label='Smooth (10d)')
-    ax1.plot(data.index, data['breadth_trend'] * 100,
-             color='#e74c3c', linewidth=1.5, linestyle='--', label='Trend (63d)')
-    ax1.axhline(57, color='#7f8c8d', linewidth=1, linestyle=':')
-    ax1.axhline(53, color='#7f8c8d', linewidth=1, linestyle=':')
+    ax1.plot(top.index, top['breadth_mean'] * 100,
+             color='#f1c40f', linewidth=1.8, label='Mean breadth (smooth)')
+    ax1.axhline(EQUITY_BULL_THRESHOLD * 100, color='#7f8c8d', linewidth=1, linestyle=':')
+    ax1.axhline(EQUITY_BEAR_THRESHOLD * 100, color='#7f8c8d', linewidth=1, linestyle=':')
     ax1.set_ylim(0, 100)
     ax1.set_ylabel('% Above 200-MA', color='#cccccc')
     ax1.set_title('Global Equity Regime  —  Breadth Above 200-Day MA',
@@ -109,13 +111,11 @@ def plot_equity_regime(regime_df) -> None:
     ax1.legend(handles=line_handles + regime_patches, loc='upper left',
                framealpha=0.3, labelcolor='#ecf0f1', facecolor='#1a1a2e')
 
-    for col, color in zip(region_cols, _CONT_COLORS):
-        label  = col.replace('breadth_', '').replace('_', ' ').title()
-        td     = data[col].dropna()
-        series = td.rolling(10, min_periods=5).mean().reindex(data.index) * 100
-        ax2.plot(data.index, series, linewidth=1.2, color=color, label=label)
+    for (continent, cdf), color in zip(sorted(continent_dfs.items()), _CONT_COLORS):
+        series = cdf['breadth_smooth'].dropna().rolling(10, min_periods=5).mean() * 100
+        ax2.plot(series.index, series, linewidth=1.2, color=color, label=continent)
 
-    ax2.axhline(55, color='#7f8c8d', linewidth=1, linestyle=':')
+    ax2.axhline(EQUITY_BULL_THRESHOLD * 100, color='#7f8c8d', linewidth=1, linestyle=':')
     ax2.set_ylim(0, 100)
     ax2.set_ylabel('% Above 200-MA', color='#cccccc')
     ax2.set_xlabel('Date', color='#cccccc')

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from config import START_DATE, END_DATE
 from data   import load_all
 
-from Simple.equity    import compute_equity_regime
+from Simple.equity    import compute_equity_regime, plot_equity_regions
 from Simple.bond      import compute_bond_regime
 from Simple.forex     import compute_forex_regime
 from Simple.commodity import compute_commodity_regime
@@ -64,16 +64,19 @@ with ThreadPoolExecutor() as pool:
     if RUN_COMMODITY: futures['commodity'] = pool.submit(compute_commodity_regime, data['commodities'])
     if RUN_CRYPTO:    futures['crypto']    = pool.submit(compute_crypto_regime,    data['crypto'])
 
-equity_df    = futures['equity'].result()    if 'equity'    in futures else None
-bond_df      = futures['bond'].result()      if 'bond'      in futures else None
-forex_df     = futures['forex'].result()     if 'forex'     in futures else None
-commodity_df = futures['commodity'].result() if 'commodity' in futures else None
-crypto_df    = futures['crypto'].result()    if 'crypto'    in futures else None
+_equity_result = futures['equity'].result()    if 'equity'    in futures else (None, None)
+bond_df        = futures['bond'].result()      if 'bond'      in futures else None
+forex_df       = futures['forex'].result()     if 'forex'     in futures else None
+commodity_df   = futures['commodity'].result() if 'commodity' in futures else None
+crypto_df      = futures['crypto'].result()    if 'crypto'    in futures else None
+
+continent_dfs, equity_df = _equity_result  # dict of per-continent DFs + global DF
 
 # ── Clip all single regimes to analysis window ────────────────────────────────
 def _clip(df):
     return df.loc[START_DATE:END_DATE] if df is not None and not df.empty else df
 
+continent_dfs = {c: _clip(cdf) for c, cdf in continent_dfs.items()} if continent_dfs else {}
 equity_df    = _clip(equity_df)
 bond_df      = _clip(bond_df)
 forex_df     = _clip(forex_df)
@@ -81,7 +84,7 @@ commodity_df = _clip(commodity_df)
 crypto_df    = _clip(crypto_df)
 
 # ── Multi asset regimes (sequential — depend on single regime outputs) ────────
-growth_df    = compute_growth_regime(equity_df, bond_df, commodity_df, forex_df, data['macro']) \
+growth_df    = compute_growth_regime((continent_dfs, equity_df), bond_df, commodity_df, forex_df, data['macro']) \
                if RUN_GROWTH    else None
 inflation_df = compute_inflation_regime(commodity_df, bond_df, data['macro']) \
                if RUN_INFLATION else None
@@ -98,7 +101,8 @@ hmm_df = compute_hmm_regime(equity_df, bond_df, forex_df, commodity_df, crypto_d
 # ── Plots ─────────────────────────────────────────────────────────────────────
 if PLOT:
     if equity_df is not None and not equity_df.empty:
-        plot_equity_regime(equity_df)
+        plot_equity_regime(continent_dfs, equity_df)
+        plot_equity_regions(continent_dfs)
     if bond_df is not None and not bond_df.empty:
         plot_bond_regime(bond_df)
     if growth_df is not None and not growth_df.empty:

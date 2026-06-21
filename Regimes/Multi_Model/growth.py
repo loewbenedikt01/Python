@@ -33,11 +33,11 @@ def _confirm(raw: pd.Series) -> pd.Series:
 
 
 def compute_growth_regime(
-    equity_df:    pd.DataFrame,
-    bond_df:      pd.DataFrame,
-    commodity_df: pd.DataFrame,
-    forex_df:     pd.DataFrame,
-    macro_df:     pd.DataFrame | None = None,
+    equity_regime: tuple[dict, pd.DataFrame],
+    bond_df:       pd.DataFrame,
+    commodity_df:  pd.DataFrame,
+    forex_df:      pd.DataFrame,
+    macro_df:      pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """
     6-signal weighted growth regime using the Bridgewater All Weather quadrant framework.
@@ -53,8 +53,10 @@ def compute_growth_regime(
       growth_score_smooth — normalised 0-1 composite score
       growth_score_delta  — 21d momentum of score (+ = accelerating, - = decelerating)
     """
+    continent_dfs, global_df = equity_regime
+
     required = {
-        'equity_df (RUN_EQUITY)':       equity_df,
+        'equity_regime (RUN_EQUITY)':   global_df,
         'bond_df (RUN_BOND)':           bond_df,
         'commodity_df (RUN_COMMODITY)': commodity_df,
         'forex_df (RUN_FOREX)':         forex_df,
@@ -66,7 +68,7 @@ def compute_growth_regime(
             f'Missing: {missing}. Enable the corresponding flags in main.py.'
         )
 
-    idx       = equity_df.index
+    idx       = global_df.index
     growth_df = pd.DataFrame(index=idx)
 
     # ── Signal 1: Yield curve — leading (6-12 months) ─────────────────────────
@@ -82,7 +84,9 @@ def compute_growth_regime(
     growth_df['copper_gold_dev'] = cu_au_dev
 
     # ── Signal 3: Equity breadth — coincident ─────────────────────────────────
-    breadth = equity_df['breadth_weighted'].reindex(idx)
+    breadth = pd.concat(
+        {c: cdf['breadth_smooth'] for c, cdf in continent_dfs.items()}, axis=1
+    ).mean(axis=1).reindex(idx)
     growth_df['sig_equity_breadth'] = (breadth > 0.55).astype(float)
     growth_df['equity_breadth']     = breadth
 
