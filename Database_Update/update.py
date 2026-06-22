@@ -368,6 +368,71 @@ def fetch_current_mcaps(tickers: list) -> dict:
     return mcap_map
 
 
+def fetch_sector_industry(tickers: list) -> dict:
+    """
+    Fetch sector and industry for each ticker via Yahoo Finance batch endpoint.
+    Returns {ticker: {'Sector': ..., 'Industry': ...}}.
+    """
+    CHUNK   = 100
+    HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    URL     = 'https://query2.finance.yahoo.com/v8/finance/quote'
+
+    chunks   = [tickers[i:i + CHUNK] for i in range(0, len(tickers), CHUNK)]
+    meta_map = {}
+
+    print(f'  Fetching sector/industry for {len(tickers)} tickers ({len(chunks)} batches) ...')
+    for i, chunk in enumerate(chunks, 1):
+        try:
+            resp = requests.get(
+                URL,
+                params={'symbols': ','.join(chunk), 'fields': 'sector,industry,symbol'},
+                headers=HEADERS,
+                timeout=30,
+            )
+            if resp.ok:
+                for item in resp.json().get('quoteResponse', {}).get('result', []):
+                    sym = item.get('symbol')
+                    if sym:
+                        meta_map[sym] = {
+                            'Sector':   item.get('sector')   or None,
+                            'Industry': item.get('industry') or None,
+                        }
+            else:
+                print(f'    [WARN] batch {i}: HTTP {resp.status_code}')
+        except Exception as e:
+            print(f'    [WARN] batch {i}: {e}')
+
+        if i % 5 == 0 or i == len(chunks):
+            print(f'    {min(i * CHUNK, len(tickers))}/{len(tickers)} done ...')
+
+    covered = sum(1 for v in meta_map.values() if v['Sector'] or v['Industry'])
+    print(f'  Received sector/industry for {covered}/{len(tickers)} tickers.')
+    return meta_map
+
+
+def backfill_sector_industry(path: str, meta_map: dict) -> None:
+    """
+    Add / refresh Sector and Industry columns in an equity parquet file.
+    Applied uniformly to all historical rows — sector rarely changes.
+    """
+    if not os.path.exists(path):
+        return
+
+    df = pd.read_parquet(path)
+    if df.empty:
+        return
+
+    tickers        = df.index.get_level_values('Ticker')
+    df             = df.copy()
+    df['Sector']   = [meta_map.get(t, {}).get('Sector')   for t in tickers]
+    df['Industry'] = [meta_map.get(t, {}).get('Industry') for t in tickers]
+    df.to_parquet(path)
+
+    unique  = tickers.unique()
+    covered = sum(1 for t in unique if meta_map.get(t, {}).get('Sector'))
+    print(f'  Sector/Industry: {covered}/{len(unique)} tickers -> {os.path.basename(path)}')
+
+
 def backfill_market_cap(path: str, mcap_map: dict) -> None:
     """
     Add / refresh the Market_Cap column in an equity parquet file.
@@ -523,7 +588,6 @@ def main():
     except Exception as e:
         print(f'  [ERROR] {e}')
 
-    print('\n[Market Cap Backfill]')
     equity_files = [
         (ticker_us,      'US_equities.parquet'),
         (ticker_asia,    'ASIA_equities.parquet'),
@@ -532,12 +596,26 @@ def main():
         (ticker_rotw,    'ROTW_equities.parquet'),
     ]
     all_equity_tickers = list({t for tickers, _ in equity_files for t in to_list(tickers)})
+
+    print('\n[Market Cap Backfill]')
     try:
         mcap_map = fetch_current_mcaps(all_equity_tickers)
         for tickers, filename in equity_files:
             path = os.path.join(DATABASE_DIR, filename)
             try:
                 backfill_market_cap(path, mcap_map)
+            except Exception as e:
+                print(f'  [ERROR] {filename}: {e}')
+    except Exception as e:
+        print(f'  [ERROR] {e}')
+
+    print('\n[Sector / Industry Backfill]')
+    try:
+        meta_map = fetch_sector_industry(all_equity_tickers)
+        for tickers, filename in equity_files:
+            path = os.path.join(DATABASE_DIR, filename)
+            try:
+                backfill_sector_industry(path, meta_map)
             except Exception as e:
                 print(f'  [ERROR] {filename}: {e}')
     except Exception as e:
