@@ -1,8 +1,3 @@
-import yfinance as yf
-import pandas as pd
-import requests
-from datetime import datetime, timedelta
-import os
 
 ticker_sectors = {
     # --- Global Sector ETFs ---
