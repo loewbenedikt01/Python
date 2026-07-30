@@ -86,7 +86,6 @@ SUFFIX_MAP = {
     '.EG': ('Egypt',         'Africa',       'EGP'),
 }
 
-NO NEEED
 DIRECT_MAP = {
     '^GSPC': ('United States', 'North America', 'USD'),
     '^IXIC': ('United States', 'North America', 'USD'),
