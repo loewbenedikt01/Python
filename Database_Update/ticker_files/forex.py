@@ -1,4 +1,3 @@
-
 ticker_forex = {
     # Major Pairs
     'EURUSD=X': 'Euro / US Dollar',
@@ -89,3 +88,4 @@ ticker_forex = {
     'UUP': 'Invesco DB US Dollar Index Bullish Fund',
     'UDN': 'Invesco DB US Dollar Index Bearish Fund'
 }
+

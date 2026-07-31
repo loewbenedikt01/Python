@@ -1,4 +1,3 @@
-
 ticker_bonds = {
     # --- Pure CBOE Yield Indices ---
     '^IRX': 'CBOE 13-Week Treasury Bill Yield',
@@ -17,7 +16,7 @@ ticker_bonds = {
     'GOVT': 'iShares Core U.S. Treasury ETF',
     'TIP': 'iShares TIPS Bond ETF',
     'STIP': 'iShares Short-Term TIPS ETF',
-    'EDV': 'Vanguard Extended Duration Treasury ETF',
     'TMF': 'Direxion Daily 20+ Year Treasury Bull 3X Shares',
     'TMV': 'Direxion Daily 20+ Year Treasury Bear 3X Shares'
 }
+

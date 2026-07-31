@@ -1,0 +1,6 @@
+total bad: 103
+ticker_us: 25 bad
+ticker_de: 49 bad
+ticker_asia: 11 bad
+ticker_europe: 11 bad
+ticker_rotw: 7 bad

@@ -1,4 +1,3 @@
-
 ticker_commodities = {
     # === I. ENERGY & ENVIRONMENTAL MARKETS ===
     'CL=F': 'Crude Oil Futures',
@@ -6,12 +5,9 @@ ticker_commodities = {
     'NG=F': 'Natural Gas Futures',
     'RB=F': 'RBOB Gasoline Futures',
     'HO=F': 'Heating Oil Futures',
-    'G=F': 'Gasoline Futures (Historical/Proxy)',
     'TTF=F': 'Dutch TTF Natural Gas Futures',
     'JKM=F': 'Japan/Korea LNG Futures',
     'MTF=F': 'Methanol Futures',
-    'NCF=F': 'Newcastle Coal Futures',
-    'ZK=F': 'Ethanol Futures',
     'KRBN': 'KraneShares Global Carbon Strategy ETF',
     'URA': 'Global X Uranium ETF',
     'XLE': 'Energy Select Sector SPDR Fund',
@@ -65,7 +61,6 @@ ticker_commodities = {
     'ZR=F': 'Rough Rice Futures',
     'ZO=F': 'Oat Futures',
     'KE=F': 'KC Hard Red Winter Wheat Futures',
-    'MG=F': 'Spring Wheat Futures',
     'CORN': 'Teucrium Corn Fund',
     'WEAT': 'Teucrium Wheat Fund',
     'SOYB': 'Teucrium Soybean Fund',
@@ -92,12 +87,10 @@ ticker_commodities = {
     'WOOD': 'iShares Global Timber & Forestry ETF',
     'CUT': 'Invesco MSCI Global Timber ETF',
     'WY': 'Weyerhaeuser Company',
-    'PCH': 'PotlatchDeltic Corporation',
     'IP': 'International Paper Company',
     'CTVA': 'Corteva, Inc.',
     'FMC': 'FMC Corporation',
     'SMG': 'The Scotts Miracle-Gro Company',
-    'UFS': 'Domtar Corporation',
     'SUZ': 'Suzano S.A.',
 
     # === VI. LIVESTOCK, POULTRY & DAIRY ===
@@ -110,5 +103,5 @@ ticker_commodities = {
     'TSN': 'Tyson Foods, Inc.',
     'PPC': 'Pilgrim\'s Pride Corporation',
     'HRL': 'Hormel Foods Corporation',
-    'BRFS': 'BRF S.A.'
 }
+
