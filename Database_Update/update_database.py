@@ -94,6 +94,7 @@ def fetch_yfinance(
         df = raw.stack(level='Ticker')
 
     df.index.names = ['Date', 'Ticker']
+    df.columns.name = None
     return df.sort_index()
 
 
@@ -105,7 +106,27 @@ def get_last_date(path):
     return pd.Timestamp(idx.max())
 
 
-def update_yfinance_group(tickers, filename):
+def fill_short_gaps(df, limit=2):
+    """Forward-fill NaNs per ticker, but only across gaps of up to `limit` rows."""
+    return (
+        df.sort_index()
+          .groupby(level='Ticker', group_keys=False)
+          .apply(lambda g: g.ffill(limit=limit))
+    )
+
+
+def split_yield_column(df, yield_prefix='^'):
+    """Move Close into a Yield column for tickers starting with `yield_prefix`
+    (CBOE yield indices), zeroing their Close. ETF tickers get Yield = 0."""
+    df = df.copy()
+    is_yield = df.index.get_level_values('Ticker').str.startswith(yield_prefix)
+    df['Yield'] = 0.0
+    df.loc[is_yield, 'Yield'] = df.loc[is_yield, 'Close']
+    df.loc[is_yield, 'Close'] = 0.0
+    return df
+
+
+def update_yfinance_group(tickers, filename, yield_prefix=None):
     ticker_list = list(tickers.keys()) if isinstance(tickers, dict) else list(tickers)
     path        = os.path.join(DATABASE_DIR, filename)
 
@@ -122,6 +143,9 @@ def update_yfinance_group(tickers, filename):
         print('  No new data returned.')
         return
 
+    if yield_prefix is not None:
+        new_df = split_yield_column(new_df, yield_prefix)
+
     if os.path.exists(path):
         existing = pd.read_parquet(path)
         combined = pd.concat([existing, new_df])
@@ -129,8 +153,14 @@ def update_yfinance_group(tickers, filename):
     else:
         combined = new_df.sort_index()
 
+    combined = fill_short_gaps(combined, limit=2)
+
+    before = len(combined)
+    combined = combined.dropna(how='any')
+    dropped = before - len(combined)
+
     combined.to_parquet(path)
-    print(f'  +{len(new_df)} rows -> {filename} (total {len(combined)} rows)')
+    print(f'  +{len(new_df)} rows -> {filename} (total {len(combined)} rows, dropped {dropped} NaN rows)')
 
 
 # --------------
@@ -139,7 +169,7 @@ def update_yfinance_group(tickers, filename):
 
 def main():
     print(f'=== Database Update — {END_DATE} ===')
-    update_yfinance_group(ticker_bonds, 'bonds.parquet')
+    update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
     print('=== Done ===')
 
 
