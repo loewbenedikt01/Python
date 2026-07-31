@@ -126,8 +126,16 @@ def split_yield_column(df, yield_prefix='^'):
     return df
 
 
+def add_name_column(df, name_map):
+    """Add a Name column looked up from a {ticker: name} dict."""
+    df = df.copy()
+    df['Name'] = df.index.get_level_values('Ticker').map(name_map)
+    return df
+
+
 def update_yfinance_group(tickers, filename, yield_prefix=None):
     ticker_list = list(tickers.keys()) if isinstance(tickers, dict) else list(tickers)
+    name_map    = tickers if isinstance(tickers, dict) else None
     path        = os.path.join(DATABASE_DIR, filename)
 
     last  = get_last_date(path)
@@ -145,6 +153,9 @@ def update_yfinance_group(tickers, filename, yield_prefix=None):
 
     if yield_prefix is not None:
         new_df = split_yield_column(new_df, yield_prefix)
+
+    if name_map is not None:
+        new_df = add_name_column(new_df, name_map)
 
     if os.path.exists(path):
         existing = pd.read_parquet(path)
