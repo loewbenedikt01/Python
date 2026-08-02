@@ -128,40 +128,6 @@ def add_name_column(df, name_map):
     return df
 
 
-# Exchange suffix -> local currency, for equities priced outside the US.
-SUFFIX_TO_CURRENCY = {
-    '.DE': 'EUR', 
-    '.PA': 'EUR', 
-    '.AS': 'EUR', 
-    '.MI': 'EUR', 
-    '.MC': 'EUR',
-    '.HE': 'EUR', 
-    '.BR': 'EUR', 
-    '.LS': 'EUR', 
-    '.VI': 'EUR',
-
-    '.ST': 'SEK', 
-    '.CO': 'DKK', 
-    '.WA': 'PLN',
-    '.L': 'GBP', 
-    '.SW': 'CHF',
-    '.T': 'JPY', 
-    '.HK': 'HKD', 
-    '.SS': 'CNY', 
-    '.SZ': 'CNY', 
-    '.NS': 'INR',
-    '.TW': 'TWD', 
-    '.KS': 'KRW', 
-    '.SI': 'SGD', 
-    '.JK': 'IDR', 
-    '.KL': 'MYR', 
-    '.BK': 'THB',
-    '.TO': 'CAD', 
-    '.AX': 'AUD', 
-    '.SA': 'BRL', 
-    '.MX': 'MXN',
-}
-
 # currency -> (yfinance forex ticker, quote direction).
 # 'direct'  = ticker is CCYUSD=X (1 CCY = rate USD) -> multiply.
 # 'inverse' = ticker is USDCCY=X (1 USD = rate CCY) -> divide.
@@ -195,18 +161,12 @@ MAPPING = {
     '.SS': ('China',        'Asia',          'CNY'),
     '.SZ': ('China',        'Asia',          'CNY'),
     '.NS': ('India',        'Asia',          'INR'),
-    '.BO': ('India',        'Asia',          'INR'),
     '.TW': ('Taiwan',       'Asia',          'TWD'),
     '.KS': ('South Korea',  'Asia',          'KRW'),
-    '.KQ': ('South Korea',  'Asia',          'KRW'),
     '.SI': ('Singapore',    'Asia',          'SGD'),
     '.JK': ('Indonesia',    'Asia',          'IDR'),
     '.KL': ('Malaysia',     'Asia',          'MYR'),
     '.BK': ('Thailand',     'Asia',          'THB'),
-    '.MN': ('Philippines',  'Asia',          'PHP'),
-    '.VN': ('Vietnam',      'Asia',          'VND'),
-    '.SR': ('Saudi Arabia', 'Asia',          'SAR'),
-    '.TA': ('Israel',       'Asia',          'ILS'),
     # Europe
     '.DE': ('Germany',       'Europe',       'EUR'),
     '.PA': ('France',        'Europe',       'EUR'),
@@ -222,32 +182,21 @@ MAPPING = {
     '.WA': ('Poland',        'Europe',       'PLN'),
     '.L':  ('United Kingdom','Europe',       'GBP'),
     '.SW': ('Switzerland',   'Europe',       'CHF'),
-    '.IR': ('Ireland',       'Europe',       'EUR'),
-    '.OL': ('Norway',        'Europe',       'NOK'),
     # Americas
     '.TO': ('Canada',        'North America','CAD'),
     '.SA': ('Brazil',        'South America','BRL'),
     '.MX': ('Mexico',        'North America','MXN'),
     # Oceania
     '.AX': ('Australia',     'Oceania',      'AUD'),
-    '.NZ': ('New Zealand',   'Oceania',      'NZD'),
-    # Africa
-    '.JO': ('South Africa',  'Africa',       'ZAR'),
-    '.EG': ('Egypt',         'Africa',       'EGP'),
 }
 
 
 def get_currency(ticker):
     dot = ticker.rfind('.')
     if dot > 0:
-        return SUFFIX_TO_CURRENCY.get(ticker[dot:], 'USD')
+        _, _, currency = MAPPING.get(ticker[dot:], (None, None, None))
+        return currency or 'USD'
     return 'USD'
-
-
-def add_currency_column(df):
-    df = df.copy()
-    df['Currency'] = [get_currency(t) for t in df.index.get_level_values('Ticker')]
-    return df
 
 
 def get_country_continent(ticker):
@@ -258,19 +207,14 @@ def get_country_continent(ticker):
     return 'United States', 'North America'
 
 
-def add_country_continent_column(df):
-    df = df.copy()
-    countries, continents = zip(*(get_country_continent(t) for t in df.index.get_level_values('Ticker')))
-    df['Country']   = countries
-    df['Continent'] = continents
-    return df
-
-
-def compute_close_usd(equities_filename='equities.parquet', forex_filename='forex.parquet'):
+def compute_close_usd(equities_filename='equities.parquet', forex_filename='forex.parquet',
+                       mapping_filename='equities_mapping.parquet'):
     """Add a Close_USD column to the equities file by converting each row's
-    Close using the matching daily FX rate from the forex file."""
-    eq_path = os.path.join(DATABASE_DIR, equities_filename)
-    fx_path = os.path.join(DATABASE_DIR, forex_filename)
+    Close using the matching daily FX rate from the forex file. Currency is
+    looked up per ticker from equities_mapping.parquet."""
+    eq_path  = os.path.join(DATABASE_DIR, equities_filename)
+    fx_path  = os.path.join(DATABASE_DIR, forex_filename)
+    map_path = os.path.join(DATABASE_DIR, mapping_filename)
 
     if not os.path.exists(eq_path):
         print('  equities file not found — skipping Close_USD.')
@@ -278,10 +222,16 @@ def compute_close_usd(equities_filename='equities.parquet', forex_filename='fore
     if not os.path.exists(fx_path):
         print('  forex file not found — skipping Close_USD.')
         return
+    if not os.path.exists(map_path):
+        print('  equities mapping file not found — skipping Close_USD.')
+        return
 
     df = pd.read_parquet(eq_path)
-    if 'Currency' not in df.columns:
-        df = add_currency_column(df)
+    currency_map = pd.read_parquet(map_path, columns=['Currency'])['Currency']
+    currencies   = pd.Series(
+        df.index.get_level_values('Ticker').map(currency_map).fillna('USD'),
+        index=df.index,
+    )
 
     forex_close = pd.read_parquet(fx_path, columns=['Close'])['Close']
 
@@ -294,9 +244,8 @@ def compute_close_usd(equities_filename='equities.parquet', forex_filename='fore
         series = (1.0 / series) if direction == 'inverse' else series
         rates[currency] = series.ffill().bfill()
 
-    dates      = df.index.get_level_values('Date')
-    currencies = df['Currency']
-    close_usd  = df['Close'].copy()
+    dates     = df.index.get_level_values('Date')
+    close_usd = df['Close'].copy()
 
     for currency in currencies.unique():
         if currency == 'USD':
@@ -313,20 +262,6 @@ def compute_close_usd(equities_filename='equities.parquet', forex_filename='fore
     df.to_parquet(eq_path)
     n_converted = int((currencies != 'USD').sum())
     print(f'  Close_USD added to {equities_filename} ({n_converted:,} non-USD rows converted).')
-
-
-def backfill_country_continent(filename='equities.parquet'):
-    """One-off: stamp Country/Continent columns onto an already-saved equities
-    file that predates add_country_continent_column()."""
-    path = os.path.join(DATABASE_DIR, filename)
-    if not os.path.exists(path):
-        print('  equities file not found — skipping Country/Continent backfill.')
-        return
-
-    df = pd.read_parquet(path)
-    df = add_country_continent_column(df)
-    df.to_parquet(path)
-    print(f'  Country/Continent backfilled in {filename}.')
 
 
 def update_equity_indicators(filename='equities.parquet', price_col='Close'):
@@ -394,11 +329,9 @@ def update_yfinance_group(tickers, filename, yield_prefix=None):
 
 def update_equities_group(ticker_groups, filename):
     """Fetch several {ticker: name} dicts (one per region) separately — so one
-    slow/failing region doesn't block the rest — then combine into one file."""
-    combined_map = {}
-    for group in ticker_groups:
-        combined_map.update(group)
-
+    slow/failing region doesn't block the rest — then combine into one file.
+    Per-company metadata (Name/Country/Continent/Currency/Sector/Industry)
+    lives in equities_mapping.parquet, not here — see grouping_equities.py."""
     path  = os.path.join(DATABASE_DIR, filename)
     last  = get_last_date(path)
     start = (last + timedelta(days=1)).strftime('%Y-%m-%d') if last is not None else START_DATE
@@ -420,10 +353,6 @@ def update_equities_group(ticker_groups, filename):
         return
 
     new_df = pd.concat(frames)
-    new_df = add_name_column(new_df, combined_map)
-    new_df = add_currency_column(new_df)
-    new_df = add_country_continent_column(new_df)
-
     _finalize_and_save(new_df, path, filename)
 
 
@@ -432,13 +361,18 @@ def update_equities_group(ticker_groups, filename):
 # --------------
 
 def main():
+    # Deferred import: grouping_equities imports get_currency/get_country_continent
+    # back from this module, so importing it at module load time would be circular.
+    from grouping_equities import update_equities_mapping
+
     print(f'=== Database Update — {END_DATE} ===')
     update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
-    update_yfinance_group(ticker_commodities, 'commodities.parquet')
-    update_yfinance_group(ticker_crypto, 'crypto.parquet')
-    update_yfinance_group(ticker_forex, 'forex.parquet')  # needed by compute_close_usd()
-    update_yfinance_group(ticker_indices, 'indices.parquet')
+    #update_yfinance_group(ticker_commodities, 'commodities.parquet')
+    #update_yfinance_group(ticker_crypto, 'crypto.parquet')
+    #update_yfinance_group(ticker_forex, 'forex.parquet')  # needed by compute_close_usd()
+    #update_yfinance_group(ticker_indices, 'indices.parquet')
     update_equities_group([ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw], 'equities.parquet')
+    update_equities_mapping()
     compute_close_usd()
     update_equity_indicators()
 

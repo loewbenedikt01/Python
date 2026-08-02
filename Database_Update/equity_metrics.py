@@ -3,30 +3,26 @@ import pandas as pd
 
 SMA_50   = 50       # Simple Moving Average
 SMA_200  = 200      # Simple Moving Average
-EMA      = 26       # Exponential Moving Average
+EMA      = 20       # Exponential Moving Average
 WMA      = 20       # Weighted Moving Average
-HLC3     = 14       # High, Low, Close average for smoothing
 ATR      = 14       # Average True Range
 VOL      = 20
 UL       = 14       # Ulcer Index (volatility indicator)
 RSI      = 14       # Relative Strength Index
-ROC      = 1        # Rate of Change (Momentum)
+ROC      = 14       # Rate of Change (Momentum)
 MACD_FAST     = 12
 MACD_SLOW     = 26
 MACD_SIGNAL   = 9
-CCI      = 20        # Commodity Channel Index (trend direction and strength in stocks)
+CCI      = 20       # Commodity Channel Index (trend direction and strength in stocks)
 PSAR     = 0.2      # Parabolic SAR (Stop and Reverse) AF = 0.02 (increasing by 0.02, max = 0.20)
 K        = 14       # %K = fast stochastic oscillator
 D        = 3        # %D = slow stochastic oscillator (apply a 3 day smooting average to the fast %K)
-R        = 2        # %R = reverse %K
+R        = 14        # %R = reverse %K
 AO       = 34       # Awesome Oscillator
-PVT      = 1        # PVTt-1 + (Closet - Closet-1) * Volumet
 BOLL_WINDOW   = 20
 BOLL_STD      = 2
 RANGE_WINDOW  = 252
-SWMA     = 1        # Symmetric Weighted Moving Average
-OBV      = 1        # On Balance Volume
-MFI      = 14        # Money Flow Index
+MFI      = 14       # Money Flow Index
 
 
 
