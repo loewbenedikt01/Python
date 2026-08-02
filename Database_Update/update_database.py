@@ -46,7 +46,12 @@ from ticker_files.indices import ticker_indices
 from ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
 
 
+"""
 
+macro.py, sectors.py, sentiment.py is still missing for 
+implementation of retrieving and updating data.
+
+"""
 
 
 # --------------
@@ -125,13 +130,36 @@ def add_name_column(df, name_map):
 
 # Exchange suffix -> local currency, for equities priced outside the US.
 SUFFIX_TO_CURRENCY = {
-    '.DE': 'EUR', '.PA': 'EUR', '.AS': 'EUR', '.MI': 'EUR', '.MC': 'EUR',
-    '.HE': 'EUR', '.BR': 'EUR', '.LS': 'EUR', '.VI': 'EUR',
-    '.ST': 'SEK', '.CO': 'DKK', '.WA': 'PLN',
-    '.L': 'GBP', '.SW': 'CHF',
-    '.T': 'JPY', '.HK': 'HKD', '.SS': 'CNY', '.SZ': 'CNY', '.NS': 'INR',
-    '.TW': 'TWD', '.KS': 'KRW', '.SI': 'SGD', '.JK': 'IDR', '.KL': 'MYR', '.BK': 'THB',
-    '.TO': 'CAD', '.AX': 'AUD', '.SA': 'BRL', '.MX': 'MXN',
+    '.DE': 'EUR', 
+    '.PA': 'EUR', 
+    '.AS': 'EUR', 
+    '.MI': 'EUR', 
+    '.MC': 'EUR',
+    '.HE': 'EUR', 
+    '.BR': 'EUR', 
+    '.LS': 'EUR', 
+    '.VI': 'EUR',
+
+    '.ST': 'SEK', 
+    '.CO': 'DKK', 
+    '.WA': 'PLN',
+    '.L': 'GBP', 
+    '.SW': 'CHF',
+    '.T': 'JPY', 
+    '.HK': 'HKD', 
+    '.SS': 'CNY', 
+    '.SZ': 'CNY', 
+    '.NS': 'INR',
+    '.TW': 'TWD', 
+    '.KS': 'KRW', 
+    '.SI': 'SGD', 
+    '.JK': 'IDR', 
+    '.KL': 'MYR', 
+    '.BK': 'THB',
+    '.TO': 'CAD', 
+    '.AX': 'AUD', 
+    '.SA': 'BRL', 
+    '.MX': 'MXN',
 }
 
 # currency -> (yfinance forex ticker, quote direction).
@@ -405,11 +433,11 @@ def update_equities_group(ticker_groups, filename):
 
 def main():
     print(f'=== Database Update — {END_DATE} ===')
-    #update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
-    #update_yfinance_group(ticker_commodities, 'commodities.parquet')
-    #update_yfinance_group(ticker_crypto, 'crypto.parquet')
+    update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
+    update_yfinance_group(ticker_commodities, 'commodities.parquet')
+    update_yfinance_group(ticker_crypto, 'crypto.parquet')
     update_yfinance_group(ticker_forex, 'forex.parquet')  # needed by compute_close_usd()
-    #update_yfinance_group(ticker_indices, 'indices.parquet')
+    update_yfinance_group(ticker_indices, 'indices.parquet')
     update_equities_group([ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw], 'equities.parquet')
     compute_close_usd()
     update_equity_indicators()
