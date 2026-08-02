@@ -71,6 +71,10 @@ def _pct_change(series):
     return _by_ticker(series).transform(lambda s: s.pct_change(fill_method=None))
 
 
+def _log_return(series):
+    return _by_ticker(series).transform(lambda s: np.log(s / s.shift(1)))
+
+
 def _shift(series, periods=1):
     return _by_ticker(series).transform(lambda s: s.shift(periods))
 
@@ -231,6 +235,7 @@ def add_all_indicators(df, price_col='Close'):
     typical_price = (high + low + close) / 3
 
     ret            = _pct_change(close)
+    log_ret        = _log_return(close)
     sma50          = _roll_mean(close, SMA_50)
     sma200         = _roll_mean(close, SMA_200)
     above_sma200   = (close > sma200).where(sma200.notna())
@@ -268,6 +273,7 @@ def add_all_indicators(df, price_col='Close'):
 
     df = df.copy()
     df['Return_1D']       = ret
+    df['Log_Return']      = log_ret
     df['SMA_50']          = sma50
     df['SMA_200']         = sma200
     df['Above_SMA200']    = above_sma200

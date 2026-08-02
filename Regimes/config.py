@@ -7,19 +7,14 @@ END_DATE    = '2025-12-31'
 DATABASE_DIR = r'C:\Users\benel\Coding\Python\Database'
 
 PARQUET_FILES = {
-    'macro':        'macro.parquet',
-    'us':           'US_equities.parquet',
-    'de':           'DE_equities.parquet',
-    'eu':           'EU_equities.parquet',
-    'asia':         'ASIA_equities.parquet',
-    'rotw':         'ROTW_equities.parquet',
-    'bonds':        'bonds.parquet',
-    'forex':        'forex.parquet',
-    'commodities':  'commodities.parquet',
-    'crypto':       'crypto.parquet',
-    'sentiment':    'sentiment.parquet',
-    'sectors':      'sectors.parquet',
-    'indices':      'indices.parquet',
+    'equities':         'equities.parquet',
+    'equities_mapping': 'equities_mapping.parquet',
+    'bonds':            'bonds.parquet',
+    'forex':            'forex.parquet',
+    'commodities':      'commodities.parquet',
+    'crypto':           'crypto.parquet',
+    'indices':          'indices.parquet',
+    # macro / sentiment / sectors: not produced yet (see Database_Update/update_database.py)
 }
 
 # ── Equity Regime ─────────────────────────────────────────────────────────────
@@ -127,6 +122,23 @@ GROWTH_WEIGHT_BOND        = 1.0   # coincident — credit conditions supportive
 GROWTH_WEIGHT_USD         = 1.0   # coincident-lagging — weak dollar = global growth supportive
 GROWTH_WEIGHT_EM          = 0.5   # coincident — no EM stress = global growth intact
 GROWTH_WEIGHT_PMI         = 1.5   # coincident — only used when macro_df has PMI
+
+# ── Distributional Clustering (MMD k-medoids regime detector) ─────────────────
+CLUSTER_H1_UNIVARIATE     = 35    # segment length, univariate step (~1 trading week)
+CLUSTER_H2_UNIVARIATE     = 28    # overlap between consecutive segments
+CLUSTER_H1_MULTIVARIATE   = 140   # segment length, correlation/copula step
+CLUSTER_H2_MULTIVARIATE   = 133   # overlap — correlation regimes shift slower than mean-variance
+CLUSTER_MIN_SEGMENTS      = 30    # skip a ticker if fewer than this many segments are available
+CLUSTER_K_MIN              = 2     # smallest k tried when auto-selecting cluster count
+CLUSTER_K_MAX              = 6     # largest k tried before giving up and using it anyway
+CLUSTER_KS_ALPHA           = 0.05  # significance level for the KS uniformity test (Bonferroni over k)
+CLUSTER_N_INIT             = 10    # random k-medoids restarts; best (lowest inertia) run is kept
+CLUSTER_MAX_ITER           = 100   # max assign/update iterations per k-medoids restart
+CLUSTER_RANDOM_STATE       = 42
+CLUSTER_GAMMA_SAMPLE_SIZE  = 300   # points subsampled for the RBF median-heuristic bandwidth
+CLUSTER_MULTI_N_CLUSTERS   = 3     # fixed k for the 2-D copula/correlation-regime step
+CLUSTER_MIN_ABS_CORR       = 0.5   # correlation screen threshold before running 2-D MMD clustering
+CLUSTER_MAX_PAIRS          = 100   # cap on candidate pairs passed to the expensive 2-D step
 
 # ── HMM ───────────────────────────────────────────────────────────────────────
 HMM_N_COMPONENTS    = 4

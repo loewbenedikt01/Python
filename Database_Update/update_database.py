@@ -366,14 +366,14 @@ def main():
     from grouping_equities import update_equities_mapping
 
     print(f'=== Database Update — {END_DATE} ===')
-    update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
+    #update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')
     #update_yfinance_group(ticker_commodities, 'commodities.parquet')
     #update_yfinance_group(ticker_crypto, 'crypto.parquet')
     #update_yfinance_group(ticker_forex, 'forex.parquet')  # needed by compute_close_usd()
     #update_yfinance_group(ticker_indices, 'indices.parquet')
-    update_equities_group([ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw], 'equities.parquet')
-    update_equities_mapping()
-    compute_close_usd()
+    #update_equities_group([ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw], 'equities.parquet')
+    #update_equities_mapping()
+    #compute_close_usd()
     update_equity_indicators()
 
     print('=== Done ===')

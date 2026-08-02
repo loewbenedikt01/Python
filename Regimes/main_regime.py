@@ -50,7 +50,7 @@ PLOT          = True   # set False for headless / batch runs
 
 # Multi Regime Pre-Processing
 if RUN_GROWTH:
-    RUN_EQUITY = RUN_BOND = RUN_FOREX = RUN_COMMODITY = True
+    RUN_EQUITY = RUN_BOND = RUN_FOREX = RUN_COMMODITY = False
 
 # ── Load all data once ────────────────────────────────────────────────────────
 data = load_all()
