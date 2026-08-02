@@ -1,3 +1,11 @@
+"""
+uni_2d_wk.py
+============
+The uni-d 2-WK-means model from Remark 3.1: same algorithm as uni_1d_wk.py, but with
+p=2 — distance and barycenter both use the 2-Wasserstein metric (pointwise mean of
+sorted order statistics, the closed-form W2 barycenter) instead of 1-Wasserstein
+(pointwise median). See uni_1d_wk.py for the shared implementation notes.
+"""
 import os
 import sys
 
@@ -12,16 +20,16 @@ from scipy.stats import ecdf, kstest
 from data import load_all
 
 
-# Change lines 42, 146, 228, 242 for h1, h2 
+# Change lines 50, 156, 237, 251 for h1, h2 
 H1 = 35
 H2 = 28
 
 class UnivariateWKMeans:
     """
-    Univariate (1D) Wasserstein K-Means (WK-means) Clustering — the uni-d 1-WK-means
-    model (p=1) from Remark 3.1: distance and barycenter both use the 1-Wasserstein
-    metric. p=2 (uni-d 2-WK-means) is also supported for completeness (see
-    uni_2d_wk.py), but this file's demo runs the p=1 variant.
+    Univariate (1D) Wasserstein K-Means (WK-means) Clustering — the uni-d 2-WK-means
+    model (p=2) from Remark 3.1: distance and barycenter both use the 2-Wasserstein
+    metric. p=1 (uni-d 1-WK-means) is also supported for completeness (see
+    uni_1d_wk.py), but this file's demo runs the p=2 variant.
 
     Both cases are closed-form on sorted order statistics: minimizing
     sum_k |c_i - z_i^(k)|^p at each quantile index i independently gives the pointwise
@@ -29,7 +37,7 @@ class UnivariateWKMeans:
     since a pointwise median/mean of already-sorted vectors is itself sorted, the result
     is always a valid quantile function.
     """
-    def __init__(self, k=2, p=1, max_iter=100, tol=1e-5, random_state=None):
+    def __init__(self, k=2, p=2, max_iter=100, tol=1e-5, random_state=None):
         self.k = k
         self.p = p
         self.max_iter = max_iter
@@ -49,21 +57,21 @@ class UnivariateWKMeans:
                 the paper's h1=35/h2=28 are calibrated for hourly data, 35 market-hours
                 being one week; on daily data the equivalent week is 5 trading days).
             h2 (int): Overlap size (default 4, one trading day short of h1).
-            
+
         Returns:
             np.ndarray: Matrix of shape (M, h1) containing discrete empirical measures.
         """
         N = len(returns)
         step = h1 - h2
         M = (N - h2) // step
-        
+
         segments = []
         for i in range(M):
             start = i * step
             end = start + h1
             if end <= N:
                 segments.append(returns[start:end])
-                
+
         return np.array(segments)
 
     def _wasserstein_1d_distance(self, u_sorted, v_sorted):
@@ -96,7 +104,7 @@ class UnivariateWKMeans:
     def fit(self, X_measures):
         """
         Clusters empirical measures K = {u_1, ..., u_M}.
-        
+
         Parameters:
             X_measures (np.ndarray): Array of shape (M, h1).
         """
@@ -104,7 +112,7 @@ class UnivariateWKMeans:
             np.random.seed(self.random_state)
 
         M, h1 = X_measures.shape
-        
+
         # Step 0: Pre-sort rows to easily compute 1D Quantiles/Wasserstein distance
         X_sorted = np.sort(X_measures, axis=1)
 
@@ -118,7 +126,7 @@ class UnivariateWKMeans:
             for i in range(M):
                 for j in range(self.k):
                     distances[i, j] = self._wasserstein_1d_distance(X_sorted[i], self.centroids_[j])
-            
+
             labels = np.argmin(distances, axis=1)
 
             # Step 3: Compute 1D Wasserstein Barycentre for each cluster
@@ -133,10 +141,10 @@ class UnivariateWKMeans:
 
             # Check stopping criteria based on centroid loss movement
             centroid_shift = np.sum([
-                self._wasserstein_1d_distance(self.centroids_[j], new_centroids[j]) 
+                self._wasserstein_1d_distance(self.centroids_[j], new_centroids[j])
                 for j in range(self.k)
             ])
-            
+
             self.centroids_ = new_centroids
             self.labels_ = labels
 
@@ -148,7 +156,7 @@ class UnivariateWKMeans:
     def transform_to_uniform(self, returns, h1=H1, h2=H2):
         """
         Step 1 of the paper's two-step approach:
-        Applies empirical cumulative distribution function (eCDF) per cluster 
+        Applies empirical cumulative distribution function (eCDF) per cluster
         to yield uniform marginals on [0, 1] for subsequent copula/multivariate analysis.
         """
         X_measures = self.lift_stream(returns, h1=h1, h2=h2)
@@ -157,19 +165,19 @@ class UnivariateWKMeans:
 
         transformed_returns = np.zeros_like(returns)
         step = h1 - h2
-        
+
         # Apply cluster-specific empirical CDF
         for j in range(self.k):
             cluster_indices = np.where(self.labels_ == j)[0]
             if len(cluster_indices) == 0:
                 continue
-                
+
             # Aggregate all return points belonging to cluster j
             cluster_returns = X_measures[cluster_indices].flatten()
-            
+
             # Compute empirical CDF mapping
             ecdf_res = ecdf(cluster_returns)
-            
+
             # Transform segment points
             for idx in cluster_indices:
                 start = idx * step
@@ -195,7 +203,7 @@ def _cluster_ks_pvalue(cluster_segments: np.ndarray) -> float:
 
 
 def select_k(measures: np.ndarray, k_min: int = 2, k_max: int = 6, alpha: float = 0.05,
-             p: int = 1, random_state: int | None = None, verbose: bool = True
+             p: int = 2, random_state: int | None = None, verbose: bool = True
              ) -> tuple[int, 'UnivariateWKMeans']:
     """
     Fit UnivariateWKMeans at increasing k, Bonferroni-testing every cluster's uniformity
@@ -216,7 +224,6 @@ def select_k(measures: np.ndarray, k_min: int = 2, k_max: int = 6, alpha: float 
     return k_max, model
 
 
-
 if __name__ == '__main__':
     TICKER = 'AAPL'
 
@@ -229,9 +236,9 @@ if __name__ == '__main__':
     # 2. Lift raw returns into overlapping segments (h1=5, h2=4 ~ 1 trading week of daily data)
     measures = UnivariateWKMeans.lift_stream(raw_returns, h1=H1, h2=H2)
 
-    # 3. Fit 1D 1-Wasserstein K-Means, choosing k via the KS-uniformity test
+    # 3. Fit 1D 2-Wasserstein K-Means, choosing k via the KS-uniformity test
     print('Selecting k via KS-uniformity test:')
-    k, model = select_k(measures, k_min=2, k_max=6, alpha=0.05, p=1, random_state=42)
+    k, model = select_k(measures, k_min=2, k_max=6, alpha=0.05, p=2, random_state=42)
     print(f'Chosen k = {k}')
 
     print("Cluster labels assigned per window:", model.labels_[:10])
