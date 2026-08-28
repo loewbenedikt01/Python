@@ -44,6 +44,8 @@ def annualized_return(log_returns: pd.Series, freq: str = 'D') -> float:
     """
     log_returns = log_returns.dropna()
     n     = len(log_returns)
+    if n == 0:
+        return np.nan
     ann_f = _annualized_factor(freq)
     return float(np.exp((log_returns.sum() / n) * ann_f) - 1)
 
@@ -65,21 +67,10 @@ def annualized_volatility(log_returns: pd.Series, freq: str = 'D') -> float:
 
 def maximum_drawdown(price_series: pd.Series) -> float:
     """
-    Worst peak-to-trough decline in the price series. Returns a negative number.
+    Worst peak-to-trough decline in the price series.
     """
     rolling_max = price_series.cummax()
     return float(((price_series / rolling_max) - 1).min())
-
-def drawdown_duration(price_series: pd.Series) -> int:
-    """
-    Longest consecutive run of trading days spent below a prior peak.
-    Measures how long an investor stays underwater at its worst stretch.
-    """
-    rolling_max       = price_series.cummax()
-    is_at_peak        = price_series >= rolling_max
-    underwater_groups = is_at_peak.cumsum()
-    durations         = price_series.groupby(underwater_groups).cumcount()
-    return int(durations.max())
 
 def ulcer_index(price_series: pd.Series) -> float:
     """
@@ -96,29 +87,29 @@ def ulcer_index(price_series: pd.Series) -> float:
 # ----
 # D. RISK-ADJUSTED RATIOS
 # ----
-def sharpe_ratio(log_returns: pd.Series, freq: str = 'D') -> float:
+def sharpe_ratio(log_returns: pd.Series, rf: float = RISK_FREE_RATE,
+                 freq: str = 'D') -> float:
     """
     Annualised Sharpe Ratio.
-    (annualized_return - rfr) / annualized_volatility.
+    (annualized_return - rf) / annualized_volatility.
     Uses full return distribution (not downside-only).
     """
-    rfr = RISK_FREE_RATE
-    ann_ret = arith_annualized_return(log_returns, freq)
-    ann_vol = annualized_volatility(log_returns, freq)
-    return float((ann_ret - rfr) / ann_vol) if ann_vol != 0 else np.nan
+    ann_ret     = arith_annualized_return(log_returns, freq)
+    ann_vol     = annualized_volatility(log_returns, freq)
+    return float((ann_ret - rf) / ann_vol) if ann_vol != 0 else np.nan
 
-def sortino_ratio(log_returns: pd.Series, rfr: float = 0.0,
+def sortino_ratio(log_returns: pd.Series, rf: float = RISK_FREE_RATE,
                   freq: str = 'D') -> float:
     """
     Annualised Sortino Ratio.
-    (annualized_return - rfr) / downside_deviation.
+    (annualized_return - rf) / downside_deviation.
     Downside deviation = sqrt(mean(min(r, 0)²)) * sqrt(ann_factor).
     Penalises only negative returns, not upside volatility.
     """
-    ann_ret      = arith_annualized_return(log_returns, freq)
-    ann_f        = _annualized_factor(freq)
-    downside_vol = np.sqrt((np.minimum(log_returns, 0) ** 2).mean()) * np.sqrt(ann_f)
-    return float((ann_ret - rfr) / downside_vol) if downside_vol != 0 else np.nan
+    ann_ret         = arith_annualized_return(log_returns, freq)
+    ann_f           = _annualized_factor(freq)
+    downside_vol    = np.sqrt((np.minimum(log_returns, 0) ** 2).mean()) * np.sqrt(ann_f)
+    return float((ann_ret - rf) / downside_vol) if downside_vol != 0 else np.nan
 
 def calmar_ratio(log_returns: pd.Series, price_series: pd.Series,
                  freq: str = 'D') -> float:
@@ -140,19 +131,20 @@ def beta(portfolio_returns: pd.Series, benchmark_returns: pd.Series) -> float:
     Formula: cov(p, b) / var(b).
     Beta > 1: amplifies market moves. Beta < 1: dampens them.
     """
-    
-    aligned_p, aligned_b = portfolio_returns.align(benchmark_returns, join='inner')
+    df = pd.concat([portfolio_returns, benchmark_returns], axis=1, join='inner').dropna()
+    aligned_p, aligned_b = df.iloc[:, 0], df.iloc[:, 1]
     cov = np.cov(aligned_p.values, aligned_b.values)
     return float(cov[0, 1] / cov[1, 1]) if cov[1, 1] != 0 else np.nan
-
+    
 def alpha(portfolio_returns: pd.Series, benchmark_returns: pd.Series,
-          rfr: float = 0.0, freq: str = 'D') -> float:
+          rf: float = RISK_FREE_RATE, freq: str = 'D') -> float:
     """
     Jensen's Alpha — annualised excess return vs CAPM expectation.
-    Formula: ann_port - (rfr + beta * (ann_bench - rfr)).
+    Formula: ann_port - (rfr + beta * (ann_bench - rf)).
     Positive alpha = portfolio outperforms its risk-adjusted benchmark expectation.
     """
     b      = beta(portfolio_returns, benchmark_returns)
     ann_p  = annualized_return(portfolio_returns, freq)
     ann_bm = annualized_return(benchmark_returns, freq)
-    return float(ann_p - (rfr + b * (ann_bm - rfr)))
+    return float(ann_p - (rf + b * (ann_bm - rf)))
+
