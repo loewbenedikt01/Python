@@ -11,8 +11,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, _HERE)
 
-from update_database import DATABASE_DIR, get_currency, get_country_continent
-from ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
+from Database.Database_Update.update_database import DATABASE_DIR, get_currency, get_country_continent
+from Database.Database_Update.ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
 
 MAPPING_FILENAME = 'equities_mapping.parquet'
 MAX_WORKERS = 10

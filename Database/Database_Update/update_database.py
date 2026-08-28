@@ -13,7 +13,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ROOT)
 sys.path.insert(0, _HERE)
 
-from equity_metrics import add_all_indicators
+from Database.Database_Update.equity_metrics import add_all_indicators
 
 # --------------
 # PARAMS
@@ -38,12 +38,12 @@ os.makedirs(DATABASE_DIR, exist_ok=True)
 # TICKERS
 # --------------
 
-from ticker_files.bond import ticker_bonds
-from ticker_files.commodities import ticker_commodities
-from ticker_files.crypto import ticker_crypto
-from ticker_files.forex import ticker_forex
-from ticker_files.indices import ticker_indices
-from ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
+from Database.Database_Update.ticker_files.bond import ticker_bonds
+from Database.Database_Update.ticker_files.commodities import ticker_commodities
+from Database.Database_Update.ticker_files.crypto import ticker_crypto
+from Database.Database_Update.ticker_files.forex import ticker_forex
+from Database.Database_Update.ticker_files.indices import ticker_indices
+from Database.Database_Update.ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
 
 
 """
@@ -363,7 +363,7 @@ def update_equities_group(ticker_groups, filename):
 def main():
     # Deferred import: grouping_equities imports get_currency/get_country_continent
     # back from this module, so importing it at module load time would be circular.
-    from grouping_equities import update_equities_mapping
+    from Database.Database_Update.grouping_equities import update_equities_mapping
 
     print(f'=== Database Update — {END_DATE} ===')
     #update_yfinance_group(ticker_bonds, 'bonds.parquet', yield_prefix='^')

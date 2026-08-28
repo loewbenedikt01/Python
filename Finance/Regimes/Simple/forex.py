@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config import (
+from Finance.Regimes.config import (
     FOREX_MA50_WINDOW, FOREX_MA200_WINDOW, FOREX_MOMENTUM_WINDOW,
     FOREX_STRENGTH_WINDOW, FOREX_SCORE_SMOOTH, FOREX_EM_NORM_WINDOW,
     FOREX_USD_BULL_ENTRY, FOREX_USD_BEAR_ENTRY,

@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config import (
+from Finance.Regimes.config import (
     BOND_BULL_ENTRY, BOND_BULL_EXIT, BOND_BEAR_ENTRY, BOND_BEAR_EXIT,
     BOND_CURVE_STEEP_THRESHOLD, BOND_CURVE_FLAT_THRESHOLD,
     BOND_MOMENTUM_THRESHOLD, BOND_MOMENTUM_WINDOW,

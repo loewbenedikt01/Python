@@ -17,12 +17,12 @@ if _REGIMES not in sys.path:
 import numpy as np
 from scipy.stats import ecdf, kstest
 
-from data import load_all
+from Finance.Regimes.data import load_all
 
 
 # Change lines 50, 156, 237, 251 for h1, h2 
-H1 = 35
-H2 = 28
+H1 = 15
+H2 = 10
 
 class UnivariateWKMeans:
     """
@@ -225,28 +225,31 @@ def select_k(measures: np.ndarray, k_min: int = 2, k_max: int = 6, alpha: float 
 
 
 if __name__ == '__main__':
-    TICKER = 'AAPL'
+    TICKERS = ['AAPL', 'AMZN']
 
-    # 1. Pull real log-returns for one ticker out of the project's equities database
-    data     = load_all()
-    log_ret  = data['equities']['Log_Return'].unstack('Ticker')
-    raw_returns = log_ret[TICKER].dropna().to_numpy()
-    print(f'{TICKER}: {len(raw_returns)} daily log-returns')
+    # 1. Pull real log-returns out of the project's equities database
+    data    = load_all()
+    log_ret = data['equities']['Log_Return'].unstack('Ticker')
 
-    # 2. Lift raw returns into overlapping segments (h1=5, h2=4 ~ 1 trading week of daily data)
-    measures = UnivariateWKMeans.lift_stream(raw_returns, h1=H1, h2=H2)
+    for TICKER in TICKERS:
+        print(f'\n=== {TICKER} (uni-d 2-WK-means) ===')
+        raw_returns = log_ret[TICKER].dropna().to_numpy()
+        print(f'{TICKER}: {len(raw_returns)} daily log-returns')
 
-    # 3. Fit 1D 2-Wasserstein K-Means, choosing k via the KS-uniformity test
-    print('Selecting k via KS-uniformity test:')
-    k, model = select_k(measures, k_min=2, k_max=6, alpha=0.05, p=2, random_state=42)
-    print(f'Chosen k = {k}')
+        # 2. Lift raw returns into overlapping segments
+        measures = UnivariateWKMeans.lift_stream(raw_returns, h1=H1, h2=H2)
 
-    print("Cluster labels assigned per window:", model.labels_[:10])
-    counts = np.bincount(model.labels_)
-    for j, n in enumerate(counts):
-        mean_ret = measures[model.labels_ == j].mean()
-        print(f'  cluster {j}: {n} windows, mean return {mean_ret:.5f}')
+        # 3. Fit 1D 2-Wasserstein K-Means, choosing k via the KS-uniformity test
+        print('Selecting k via KS-uniformity test:')
+        k, model = select_k(measures, k_min=2, k_max=6, alpha=0.05, p=2, random_state=42)
+        print(f'Chosen k = {k}')
 
-    # 4. Transform marginal distributions to Uniform [0, 1] using cluster eCDFs
-    uniform_data = model.transform_to_uniform(raw_returns, h1=H1, h2=H2)
-    print("Sample transformed uniform returns:", uniform_data[:5])
+        print("Cluster labels assigned per window:", model.labels_[:10])
+        counts = np.bincount(model.labels_)
+        for j, n in enumerate(counts):
+            mean_ret = measures[model.labels_ == j].mean()
+            print(f'  cluster {j}: {n} windows, mean return {mean_ret:.5f}')
+
+        # 4. Transform marginal distributions to Uniform [0, 1] using cluster eCDFs
+        uniform_data = model.transform_to_uniform(raw_returns, h1=H1, h2=H2)
+        print("Sample transformed uniform returns:", uniform_data[:5])

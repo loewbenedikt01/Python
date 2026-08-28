@@ -28,7 +28,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.colors import TwoSlopeNorm
 from scipy import stats as scipy_stats
 
-import risk_metrics_new as rm
+import Finance.Backtesting_engine.risk_metrics_new as rm
 
 # ── Visual theme ──────────────────────────────────────────────────────────────
 _BG       = '#1a1a2e'

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from config import (
+from Finance.Regimes.config import (
     EQUITY_BULL_THRESHOLD, EQUITY_BEAR_THRESHOLD,
     EQUITY_MIN_STOCKS, EQUITY_MA_WINDOW,
     EQUITY_SMOOTH_WINDOW, EQUITY_CONFIRM_WINDOW, EQUITY_CONFIRM_MIN,

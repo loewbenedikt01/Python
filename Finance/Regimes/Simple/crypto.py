@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config import (
+from Finance.Regimes.config import (
     CRYPTO_BULL_ENTRY, CRYPTO_BULL_EXIT,
     CRYPTO_BEAR_ENTRY, CRYPTO_BEAR_EXIT,
     CRYPTO_MA_WINDOW, CRYPTO_BTC_SMOOTH, CRYPTO_ETH_SMOOTH,

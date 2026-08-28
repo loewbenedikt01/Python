@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config import (
+from Finance.Regimes.config import (
     GROWTH_THRESHOLD,
     GROWTH_SCORE_SMOOTH, GROWTH_DELTA_WINDOW,
     GROWTH_CONFIRM_WINDOW, GROWTH_CONFIRM_MIN,

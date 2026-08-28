@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from config import (
+from Finance.Regimes.config import (
     REGIME_COLORS, CURVE_COLORS,
     EQUITY_BULL_THRESHOLD, EQUITY_BEAR_THRESHOLD,
 )
@@ -468,7 +468,7 @@ def plot_commodity_regime(commodity_df) -> None:
 
 
 def plot_growth_regime(growth_df) -> None:
-    from config import GROWTH_THRESHOLD
+    from Finance.Regimes.config import GROWTH_THRESHOLD
     data = growth_df.dropna(subset=['growth_score_smooth']).copy()
 
     fig, (ax1, ax2, ax3) = plt.subplots(

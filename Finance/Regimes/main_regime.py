@@ -7,23 +7,23 @@ Toggle the RUN_* flags to enable/disable each regime.
 
 from concurrent.futures import ThreadPoolExecutor
 
-from config import START_DATE, END_DATE
-from data   import load_all
+from Finance.Regimes.config import START_DATE, END_DATE
+from Finance.Regimes.data   import load_all
 
-from Simple.equity    import compute_equity_regime, plot_equity_regions
-from Simple.bond      import compute_bond_regime
-from Simple.forex     import compute_forex_regime
-from Simple.commodity import compute_commodity_regime
-from Simple.crypto    import compute_crypto_regime
+from Finance.Regimes.Simple.equity    import compute_equity_regime, plot_equity_regions
+from Finance.Regimes.Simple.bond      import compute_bond_regime
+from Finance.Regimes.Simple.forex     import compute_forex_regime
+from Finance.Regimes.Simple.commodity import compute_commodity_regime
+from Finance.Regimes.Simple.crypto    import compute_crypto_regime
 
-from Multi_Model.growth        import compute_growth_regime
-from Multi_Model.inflation     import compute_inflation_regime
-from Multi_Model.liquidity     import compute_liquidity_regime
-from Multi_Model.risk_appetite import compute_risk_appetite_regime
+from Finance.Regimes.Multi_Model.growth        import compute_growth_regime
+from Finance.Regimes.Multi_Model.inflation     import compute_inflation_regime
+from Finance.Regimes.Multi_Model.liquidity     import compute_liquidity_regime
+from Finance.Regimes.Multi_Model.risk_appetite import compute_risk_appetite_regime
 
-from Hidden_Markov_Model.hmm import compute_hmm_regime
+from Finance.Regimes.Hidden_Markov_Model.hmm import compute_hmm_regime
 
-from plots import (
+from Finance.Regimes.plots import (
     plot_equity_regime,
     plot_bond_regime,
     plot_commodity_regime,

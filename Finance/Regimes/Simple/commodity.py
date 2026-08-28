@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from config import (
+from Finance.Regimes.config import (
     COMMODITY_MA_WINDOW, COMMODITY_SMOOTH_WINDOW, COMMODITY_MOMENTUM_WINDOW,
     COMMODITY_BASKET_WINDOW, COMMODITY_SCORE_SMOOTH,
     COMMODITY_BULL_ENTRY, COMMODITY_BULL_EXIT,

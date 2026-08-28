@@ -28,8 +28,8 @@ if _REGIMES not in sys.path:
 import numpy as np
 import pandas as pd
 
-from data import load_all
-from uni_1d_wk import UnivariateWKMeans, H1, H2
+from Finance.Regimes.data import load_all
+from Finance.Regimes.Clustering.uni_1d_wk import UnivariateWKMeans, H1, H2
 
 
 # ── 1. Calibrate bull/bear MJD parameters from a real return series ────────────────

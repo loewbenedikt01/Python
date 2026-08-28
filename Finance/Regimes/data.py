@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from config import DATABASE_DIR, PARQUET_FILES, START_DATA, END_DATE
+from Finance.Regimes.config import DATABASE_DIR, PARQUET_FILES, START_DATA, END_DATE
 
 def load_all() -> dict[str, pd.DataFrame]:
     """
