@@ -17,7 +17,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-OUTPUT_PATH = Path(r"C:\Users\benel\Coding\Python\Thesis\01_database")
+OUTPUT_PATH = Path(r"C:\Users\benel\Coding\Python\Thesis\_database")
 
 START_DATE  = '1990-01-01'
 END_DATE    = '2025-12-31'

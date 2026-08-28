@@ -12,9 +12,7 @@ Sharpe Ratio, Sortino Ratio, Calmar Ratio, Ulcer Index, Max. Drawdown, Cumulativ
 import numpy as np
 import pandas as pd
 
-TRADING_DAYS_PER_YEAR   = 252
-MONTHS_PER_YEAR         = 12
-RISK_FREE_RATE          = 0.0
+from config import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR, MONTHS_PER_YEAR
 
 
 # ----
