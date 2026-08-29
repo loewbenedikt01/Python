@@ -12,8 +12,11 @@ Sharpe Ratio, Sortino Ratio, Calmar Ratio, Ulcer Index, Max. Drawdown, Cumulativ
 import numpy as np
 import pandas as pd
 
-from config import RISK_FREE_RATE, TRADING_DAYS_PER_YEAR, MONTHS_PER_YEAR
-
+from config import (
+    RISK_FREE_RATE, 
+    TRADING_DAYS_PER_YEAR, 
+    MONTHS_PER_YEAR
+)
 
 # ----
 # Annualization
