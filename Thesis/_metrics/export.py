@@ -2,11 +2,7 @@
 """
 Reporting — the connector between a model's raw output, the metric
 definitions (metrics.py) and the crisis windows (crises.py).
-
-
 """
-
-
 
 
 from pathlib import Path
