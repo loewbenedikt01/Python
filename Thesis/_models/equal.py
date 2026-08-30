@@ -19,7 +19,14 @@ import export
 from config import START_DATE, END_DATE
 from portfolio import build_portfolio, universe_for
 
-MODEL      = "equal_weight"
+"""
+For each run, change:
+
+'MODEL_NAME' 
+'TRANSACTION_COSTS' in 'config.py
+"""
+
+MODEL_NAME       = 'equal_weight_no_trans'           # change to no trans or whatever u run
 START_YEAR = pd.Timestamp(START_DATE).year
 END_YEAR   = pd.Timestamp(END_DATE).year
 
@@ -44,15 +51,15 @@ def equal_weight_targets(start_year: int = START_YEAR, end_year: int = END_YEAR)
 
 def main() -> None:
     targets = equal_weight_targets()
-
     for frequency in FREQUENCIES:
         res = build_portfolio(targets, frequency=frequency)
-        name = f"{MODEL}/{MODEL}_{frequency.lower()}"        # _output/equal_weight/equal_weight_monthly/...
+        name = f"equal_weight/{MODEL_NAME}_{frequency.lower()}"        # _output/equal_weight/equal_weight_monthly/...
 
         export.build_report(
             name,
             res.log_returns,
             weights=res.weights,
+            rebalance_status=res.rebalance_status,
             diagnostics={
                 "turnover": res.turnover,
                 "transaction_costs": res.transaction_costs,

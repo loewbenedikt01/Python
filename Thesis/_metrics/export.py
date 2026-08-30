@@ -209,11 +209,21 @@ def daily_returns_frame(portfolio_log_returns: pd.Series) -> pd.DataFrame:
     df.index.name = "date"
     return df
 
-def monthly_value_frame(portfolio_log_returns: pd.Series) -> pd.DataFrame:
+def monthly_value_frame(
+    portfolio_log_returns: pd.Series,
+    rebalance_status: pd.Series | None = None,
+) -> pd.DataFrame:
     port = _to_datetime_series(portfolio_log_returns)
     nav = _nav(port).resample("ME").last()
     df = pd.DataFrame({"nav": nav, "monthly_return": nav.pct_change()})
     df.index.name = "month_end"
+    if rebalance_status is not None:
+        rs = pd.Series(rebalance_status)
+        rs.index = pd.to_datetime(rs.index)
+        bad = {d.to_period("M") for d in rs.index[rs.eq("carried_forward")]}
+        df["rebalance_flag"] = np.where(
+            df.index.to_period("M").isin(bad), "carried_forward", ""
+        )
     return df
 
 
@@ -226,6 +236,7 @@ def build_report(
     *,
     weights: pd.DataFrame | None = None,
     diagnostics: dict | None = None,
+    rebalance_status: pd.Series | None = None,
     ml: bool | None = None,
     freq: str = "D",
     output_root: Path = OUTPUT_ROOT,
@@ -249,14 +260,18 @@ def build_report(
         df.to_csv(path)
         written.append(path)
 
-    # raw 
+    # raw
     _write(daily_returns_frame(port), raw_dir / "daily_returns.csv")
-    _write(monthly_value_frame(port), raw_dir / "monthly_value.csv")
+    _write(monthly_value_frame(port, rebalance_status), raw_dir / "monthly_value.csv")
 
     if weights is not None:
         w = weights.copy()
         w.index = pd.to_datetime(w.index)
         w.index.name = "date"
+        if rebalance_status is not None:
+            rs = pd.Series(rebalance_status)
+            rs.index = pd.to_datetime(rs.index)
+            w["rebalance_flag"] = rs.reindex(w.index).fillna("")
         _write(w, raw_dir / "weights.csv")
 
     expected = set(RAW_DIAGNOSTICS_ML if ml else RAW_DIAGNOSTICS)

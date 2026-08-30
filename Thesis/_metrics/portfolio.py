@@ -18,7 +18,6 @@ from config import (
     TRANSACTION_COST_BPS,
     START_DATE,
     END_DATE,
-    REBALANCE_FREQ,
 )
 from universe import tickers as UNIVERSE
 
@@ -32,37 +31,44 @@ class PortfolioResult:
     turnover:          pd.Series      # per rebalance date
     transaction_costs: pd.Series      # per rebalance date
     target_weights:    pd.DataFrame   # per rebalance date, after universe filter + renorm
+    rebalance_status:  pd.Series      # per rebalance date: "ok" | "carried_forward"
 
 
 # ----
 # Inputs
 # ----
 def load_prices(database_path=DATABASE_PATH) -> pd.DataFrame:
-    """Adjusted close, wide (date x ticker)."""
+    """
+    Adjusted close, wide (date x ticker).
+    """
     px = pd.read_parquet(database_path)["Adj Close"].sort_index()
     px.index = pd.to_datetime(px.index)
     return px
 
 
 def _universe_for(year: int) -> set[str]:
-    """The 20 tickers investable during calendar `year` = universe of year-1."""
+    """
+    The 20 tickers investable during calendar 'year' = universe of year-1.
+    """
     uni_year = min(max(year - 1, _UNI_YEARS[0]), _UNI_YEARS[-1])
     return {t for t, _ in UNIVERSE[uni_year]}
 
 
 def universe_for(year: int) -> list[str]:
     """
-    Sorted list of the tickers investable during calendar `year` — the end-of-
+    Sorted list of the tickers investable during calendar 'year' — the end-of-
     (year-1) market-cap top 20 from universe.py.  Models use this to build their
     target-weight matrix.
     """
     return sorted(_universe_for(year))
 
 
-def _month_end_dates(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    """Last trading day of each month present in `index`."""
+def _month_first_dates(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """
+    First trading day of each month present in 'index'.
+    """
     s = index.to_series()
-    return pd.DatetimeIndex(s.groupby([index.year, index.month]).last().to_numpy())
+    return pd.DatetimeIndex(s.groupby([index.year, index.month]).first().to_numpy())
 
 
 # Which calendar months carry a rebalance, anchored at the January start
@@ -73,15 +79,38 @@ REBALANCE_MONTHS = {
     "Yearly":    {1},
 }
 
+# If the month's first trading day has thin price coverage, step forward up to
+# this many trading days (within the same month) to a better-covered day.
+REBALANCE_FALLBACK_DAYS = 3
 
-def _rebalance_dates(index: pd.DatetimeIndex, frequency: str) -> pd.DatetimeIndex:
+
+def _rebalance_dates(
+    index: pd.DatetimeIndex,
+    frequency: str,
+    valid_price: pd.DataFrame | None = None,
+) -> pd.DatetimeIndex:
     """
-    Last trading day of each qualifying month for `frequency`, always including
-    the first month-end in `index` so the book is deployed at the start.
+    First trading day of each qualifying month for 'frequency'.  When
+    `valid_price` is given, a candidate day with fewer priced tickers than a day
+    within the next REBALANCE_FALLBACK_DAYS trading days is bumped to that
+    better-covered day (ties keep the earlier date).
     """
-    me = _month_end_dates(index)
-    picked = me[me.month.isin(REBALANCE_MONTHS[frequency])]
-    return me[:1].union(picked)
+    firsts = _month_first_dates(index)
+    firsts = firsts[firsts.month.isin(REBALANCE_MONTHS[frequency])]
+    if valid_price is None:
+        return firsts
+
+    coverage = valid_price.sum(axis=1)
+    out = []
+    for d in firsts:
+        pos = index.get_loc(d)
+        window = [
+            index[pos + k]
+            for k in range(REBALANCE_FALLBACK_DAYS + 1)
+            if pos + k < len(index) and index[pos + k].month == d.month
+        ]
+        out.append(max(window, key=lambda x: (coverage.get(x, 0), -index.get_loc(x))))
+    return pd.DatetimeIndex(out)
 
 
 # ----
@@ -97,6 +126,7 @@ def _resolve_targets(
     tw = tw.sort_index()
 
     resolved: list[pd.Series] = []
+    status: dict[pd.Timestamp, str] = {}
     prev: pd.Series | None = None
     for d in rebalance_dates:
         pos = tw.index.searchsorted(d, side="right") - 1
@@ -111,14 +141,20 @@ def _resolve_targets(
             if len(row) > MAX_HOLDINGS:
                 row = row[row.abs().sort_values(ascending=False).index[:MAX_HOLDINGS]]
 
-        if len(row) and row.sum() != 0:
+        usable = bool(len(row)) and row.sum() != 0
+        if usable:
             prev = row / row.sum()
         if prev is None:
             continue
         resolved.append(prev.rename(d))
+        status[d] = "ok" if usable else "carried_forward"
+        if not usable:
+            print(f"  [portfolio] ERROR {d.date()}: no usable target weights "
+                  f"(universe / price / precomputation missing) - holding previous allocation")
 
     tgt = pd.DataFrame(resolved).fillna(0.0)
-    return tgt.loc[:, tgt.abs().sum() > 0]
+    tgt = tgt.loc[:, tgt.abs().sum() > 0]
+    return tgt, pd.Series(status, name="rebalance_status").sort_index()
 
 
 # ----
@@ -127,7 +163,7 @@ def _resolve_targets(
 def build_portfolio(
     target_weights: pd.DataFrame,
     *,
-    frequency: str = REBALANCE_FREQ,
+    frequency: str,
     prices: pd.DataFrame | None = None,
     start=None,
     end=None,
@@ -160,10 +196,10 @@ def build_portfolio(
     end = pd.Timestamp(end) if end is not None else min(px.index.max(), pd.Timestamp(END_DATE))
 
     cal = px.loc[start:end].index
-    rebs = _rebalance_dates(cal, frequency)
+    rebs = _rebalance_dates(cal, frequency, px.notna())
     rebs = rebs[(rebs >= start) & (rebs <= end)]
 
-    tgt = _resolve_targets(target_weights, rebs, px.notna())
+    tgt, rebalance_status = _resolve_targets(target_weights, rebs, px.notna())
     reb_list = list(tgt.index)
     if len(reb_list) < 2:
         raise ValueError("need at least two usable rebalance dates")
@@ -225,6 +261,7 @@ def build_portfolio(
         turnover=pd.Series(turnover).sort_index().rename("turnover"),
         transaction_costs=pd.Series(txn_cost).sort_index().rename("transaction_costs"),
         target_weights=tgt,
+        rebalance_status=rebalance_status,
     )
 
 
@@ -232,32 +269,16 @@ def build_portfolio(
 # Smoke test — equal-weight over each year's universe
 # ----
 if __name__ == "__main__":
-    import export
-
-    px = load_prices()
-    rebs = _month_end_dates(px.loc["1998":].index)
-
     all_tickers = sorted({t for lst in UNIVERSE.values() for t, _ in lst})
     rows = {}
-    for d in rebs:
-        uni = _universe_for(d.year)
-        rows[d] = pd.Series(1.0 / len(uni), index=sorted(uni))
+    for year in range(pd.Timestamp(START_DATE).year, pd.Timestamp(END_DATE).year + 1):
+        uni = universe_for(year)
+        rows[pd.Timestamp(year, 1, 1)] = pd.Series(1.0 / len(uni), index=uni)
     equal_weight = pd.DataFrame(rows).T.reindex(columns=all_tickers)
 
-    res = build_portfolio(equal_weight)
-
-    print(f"days           : {len(res.log_returns)}  "
-          f"({res.log_returns.index[0].date()} .. {res.log_returns.index[-1].date()})")
-    print(f"cum return     : {np.expm1(res.log_returns.sum()):.2%}")
-    print(f"avg turnover   : {res.turnover.iloc[1:].mean():.3f}  "
-          f"(first = {res.turnover.iloc[0]:.2f})")
-    print(f"total txn cost : {res.transaction_costs.sum():.2%}")
-    print(f"weights shape  : {res.weights.shape}  "
-          f"row sums {res.weights.sum(axis=1).min():.3f}..{res.weights.sum(axis=1).max():.3f}")
-
-    export.build_report(
-        "_equal_weight_demo", res.log_returns,
-        weights=res.weights,
-        diagnostics={"turnover": res.turnover,
-                     "transaction_costs": res.transaction_costs},
-    )
+    for frequency in REBALANCE_MONTHS:
+        res = build_portfolio(equal_weight, frequency=frequency)
+        print(f"{frequency:10s} {len(res.log_returns):5d} days  "
+              f"cum {np.expm1(res.log_returns.sum()):8.2%}  "
+              f"avg turnover {res.turnover.iloc[1:].mean():.3f}  "
+              f"carried_forward {int(res.rebalance_status.eq('carried_forward').sum())}")

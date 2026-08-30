@@ -37,4 +37,3 @@ RISK_FREE_RATE          = 0.0
 # ----
 MAX_HOLDINGS            = 20         # investable universe size (universe.py per year)
 TRANSACTION_COST_BPS    = 00         # charged on turnover at each rebalance
-REBALANCE_FREQ          = "Monthly"  # default; models also run "Quarterly" / "Yearly"

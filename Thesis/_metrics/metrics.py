@@ -51,9 +51,11 @@ def annualized_return(log_returns: pd.Series, freq: str = 'D') -> float:
     return float(np.exp((log_returns.sum() / n) * ann_f) - 1)
 
 def arith_annualized_return(log_returns: pd.Series, freq: str = 'D') -> float:
-    """Arithmetic annualised mean of log returns (mean * periods_per_year).
+    """
+    Arithmetic annualised mean of log returns (mean * periods_per_year).
     Matches the (log, arithmetic) units of annualized_volatility, so it is
-    the right numerator for risk-adjusted ratios."""
+    the right numerator for risk-adjusted ratios.
+    """
     return float(log_returns.mean() * _annualized_factor(freq))
 
 
