@@ -34,19 +34,17 @@ import numpy as np
 import pandas as pd
 
 try:
-    from config import DATABASE_PATH
+    from config import DATABASE_PATH, TRADING_DAYS_PER_YEAR
 except ImportError:                       # allow standalone import
     DATABASE_PATH = None
 
 # ----
 # Constants
 # ----
-TRADING_DAYS = 252
-ANN          = np.sqrt(TRADING_DAYS)
+ANN          = np.sqrt(TRADING_DAYS_PER_YEAR)
 MKT_TICKER   = "^GSPC"
 VIX_TICKER   = "^VIX"
 MIN_BARS     = 300                        # trailing bars the longest window needs
-EPS          = 1e-9
 
 
 # ----
@@ -90,7 +88,7 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
     cr = ret.fillna(0.0).cumsum()
     f["mom_accel_3m"] = (cr.iloc[-1] - cr.iloc[-64]) - (cr.iloc[-64] - cr.iloc[-127])
 
-    w = c.tail(TRADING_DAYS)
+    w = c.tail(TRADING_DAYS_PER_YEAR)
     f["dist_52w_high"] = last / w.max() - 1
     f["dist_52w_low"]  = last / w.min() - 1
 
@@ -113,14 +111,14 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
         sigma  = np.sqrt(np.nansum(resid ** 2, axis=0) / dof)
         ss_res = np.nansum(resid ** 2, axis=0)
         ss_tot = np.nansum(yc ** 2, axis=0)
-    f["trend_tstat_6m"] = pd.Series(slope / (sigma / np.sqrt(Sxx) + EPS), index=c.columns)
-    f["trend_r2_6m"]    = pd.Series(1.0 - ss_res / (ss_tot + EPS), index=c.columns)
+    f["trend_tstat_6m"] = pd.Series(slope / (sigma / np.sqrt(Sxx)), index=c.columns)
+    f["trend_r2_6m"]    = pd.Series(1.0 - ss_res / ss_tot, index=c.columns)
 
     # information discreteness (Da, Gurun & Warachka): smooth momentum persists
-    r    = ret.tail(TRADING_DAYS)
+    r    = ret.tail(TRADING_DAYS_PER_YEAR)
     pos  = (r > 0).sum()
     neg  = (r < 0).sum()
-    f["info_discreteness"] = np.sign(f["mom_12_1"]) * ((neg - pos) / (pos + neg + EPS))
+    f["info_discreteness"] = np.sign(f["mom_12_1"]) * ((neg - pos) / (pos + neg))
     return f
 
 
@@ -130,21 +128,21 @@ def _reversal(c: pd.DataFrame, ret: pd.DataFrame, o: pd.DataFrame) -> dict:
     f["rev_1m"] = -c.pct_change(21).iloc[-1]
 
     p20 = c.tail(20)
-    f["bb_position"] = (c.iloc[-1] - p20.mean()) / (2 * p20.std() + EPS)
+    f["bb_position"] = (c.iloc[-1] - p20.mean()) / (2 * p20.std())
     p50 = c.tail(50)
-    f["ma50_zscore"] = (c.iloc[-1] - p50.mean()) / (p50.std() + EPS)
+    f["ma50_zscore"] = (c.iloc[-1] - p50.mean()) / p50.std()
 
-    d    = ret.tail(TRADING_DAYS)
+    d    = ret.tail(TRADING_DAYS_PER_YEAR)
     gain = d.clip(lower=0).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean().iloc[-1]
     loss = (-d.clip(upper=0)).ewm(alpha=1 / 14, min_periods=14, adjust=False).mean().iloc[-1]
-    f["rsi_14"] = 100 - 100 / (1 + gain / (loss + EPS))
+    f["rsi_14"] = 100 - 100 / (1 + gain / loss)
 
     overnight = (o / c.shift(1) - 1).tail(63)
     intraday  = (c / o - 1).tail(63)
     on_c, in_c = overnight.sum(), intraday.sum()
     f["overnight_ret_3m"] = on_c
     f["intraday_ret_3m"]  = in_c
-    f["overnight_share"]  = on_c / (on_c.abs() + in_c.abs() + EPS)
+    f["overnight_share"]  = on_c / (on_c.abs() + in_c.abs())
     return f
 
 
@@ -153,7 +151,7 @@ def _volatility(ret: pd.DataFrame, o: pd.DataFrame, h: pd.DataFrame,
     f: dict = {}
     for name, n in [("vol_1m", 21), ("vol_3m", 63), ("vol_6m", 126), ("vol_12m", 252)]:
         f[name] = ret.tail(n).std() * ANN
-    f["vol_ratio"] = ret.tail(21).std() / (ret.tail(252).std() + EPS)
+    f["vol_ratio"] = ret.tail(21).std() / ret.tail(252).std()
 
     hl = np.log(h / l)
     f["parkinson_1m"] = np.sqrt((hl.tail(21) ** 2).mean() / (4 * np.log(2))) * ANN
@@ -179,8 +177,8 @@ def _market_risk(logret: pd.DataFrame, mkt_ret: pd.Series, ret: pd.DataFrame) ->
     f: dict = {}
     idx = logret.columns
 
-    Y = logret.tail(TRADING_DAYS).to_numpy()
-    X = mkt_ret.tail(TRADING_DAYS).to_numpy()
+    Y = logret.tail(TRADING_DAYS_PER_YEAR).to_numpy()
+    X = mkt_ret.tail(TRADING_DAYS_PER_YEAR).to_numpy()
     good = ~np.isnan(X)
     Y, X = Y[good], X[good]
 
@@ -188,7 +186,7 @@ def _market_risk(logret: pd.DataFrame, mkt_ret: pd.Series, ret: pd.DataFrame) ->
         warnings.simplefilter("ignore")
         Xc      = X - X.mean()
         Sxx     = float((Xc ** 2).sum())
-        beta    = np.nansum(Xc[:, None] * (Y - np.nanmean(Y, 0)), 0) / (Sxx + EPS)
+        beta    = np.nansum(Xc[:, None] * (Y - np.nanmean(Y, 0)), 0) / Sxx
         resid   = Y - (np.nanmean(Y, 0) + beta[None, :] * Xc[:, None])
         idio    = np.sqrt(np.nanmean(resid ** 2, 0)) * ANN
         # residual (idiosyncratic) momentum: cumulative residual up to t-21
@@ -197,7 +195,7 @@ def _market_risk(logret: pd.DataFrame, mkt_ret: pd.Series, ret: pd.DataFrame) ->
         # downside beta: regression restricted to down-market days
         dn      = X < 0
         Xd      = X[dn] - X[dn].mean()
-        beta_dn = np.nansum(Xd[:, None] * (Y[dn] - np.nanmean(Y[dn], 0)), 0) / ((Xd ** 2).sum() + EPS)
+        beta_dn = np.nansum(Xd[:, None] * (Y[dn] - np.nanmean(Y[dn], 0)), 0) / (Xd ** 2).sum()
 
     f["beta_12m"]          = pd.Series(beta, idx)
     f["downside_beta_12m"] = pd.Series(beta_dn, idx)
@@ -216,20 +214,20 @@ def _liquidity(ret: pd.DataFrame, c: pd.DataFrame, vol: pd.DataFrame) -> dict:
     f["amihud_1m"] = (ret.abs().tail(21)  / dollar.tail(21)).mean()
     f["amihud_6m"] = (ret.abs().tail(126) / dollar.tail(126)).mean()
     f["dollar_vol_level"] = np.log(dollar.tail(21).mean())
-    f["dollar_vol_trend"] = dollar.tail(21).mean() / (dollar.tail(126).mean() + EPS)
-    f["volume_shock"]     = vol.tail(5).mean() / (vol.tail(60).mean() + EPS)
+    f["dollar_vol_trend"] = dollar.tail(21).mean() / dollar.tail(126).mean()
+    f["volume_shock"]     = vol.tail(5).mean() / vol.tail(60).mean()
     f["pv_corr_1m"]       = ret.tail(21).corrwith(vol.pct_change().tail(21))
     return f
 
 
 def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
     f: dict = {}
-    r = ret.tail(TRADING_DAYS)
+    r = ret.tail(TRADING_DAYS_PER_YEAR)
     q05 = r.quantile(0.05)
     f["var_95_12m"]  = q05
     f["cvar_95_12m"] = r.where(r.le(q05)).mean()
 
-    w  = c.tail(TRADING_DAYS)
+    w  = c.tail(TRADING_DAYS_PER_YEAR)
     dd = w / w.cummax() - 1
     f["max_dd_12m"] = dd.min()
     f["ulcer_12m"]  = np.sqrt((dd ** 2).mean())
@@ -243,7 +241,7 @@ def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
 
 def features(db: pd.DataFrame,
              asof=None,
-             min_history: int = TRADING_DAYS,
+             min_history: int = TRADING_DAYS_PER_YEAR,
              min_coverage: float = 0.9) -> pd.DataFrame:
     """
     One row of cross-sectionally ranked features per ticker, as of `asof`
