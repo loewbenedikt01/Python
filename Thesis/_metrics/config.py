@@ -45,9 +45,23 @@ HORIZON_TRADING_DAYS = {
     "Yearly":    252,
 }
 MIN_OBS = 63                        # Skip a rebalance date when the lookback window has fewer than this many usable daily observations.
+MIN_DATA                = 0.50      # min 50% data given to calculate, otherwise drop the ticker
 
 # ----
 # Configuration for MVO Weights Calculation
 # ----
 LOOKBACK_MONTHS_MVO     = 60        # 60 months lookback window for calculation
-MIN_DATA                = 0.50      # min 50% data given to calculate, otherwise drop the ticker
+
+# ----
+# Configuration for HRP Weights Calculation
+# ----
+LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
+
+# ----
+# Configuration for HRP Weights Calculation
+# ----
+LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
+TRAIN_MONTHS_XGB        = 60
+VAL_MONTHS_XGB          = 24
+
+
