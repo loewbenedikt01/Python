@@ -21,9 +21,16 @@ import export
 from config import START_DATE, END_DATE
 from portfolio import load_prices
 
-MODEL_NAME = "sp500_no_trans"
-TICKER     = "^GSPC"
+# ---- 
+# Variables
+# ----
 
+MODEL_NAME = "sp500_no_trans"
+TICKER     = "^GSPC"        # download new benchmark data and run another one
+
+# ---- 
+# Main Part
+# ----
 
 def main() -> None:
     px = load_prices()[TICKER].dropna().loc[START_DATE:END_DATE]

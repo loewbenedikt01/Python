@@ -19,16 +19,11 @@ import export
 from config import START_DATE, END_DATE
 from portfolio import build_portfolio, universe_for
 
-"""
-For each run, change:
+# ---- 
+# Variables
+# ----
 
-'MODEL_NAME' 
-'TRANSACTION_COSTS' in 'config.py
-"""
-
-MODEL_NAME       = 'equal_weight_no_trans'           # change to no trans or whatever u run
-START_YEAR = pd.Timestamp(START_DATE).year
-END_YEAR   = pd.Timestamp(END_DATE).year
+MODEL_NAME       = 'equal_weight_no_trans'           
 
 FREQUENCIES = [
     'Monthly',
@@ -39,6 +34,9 @@ FREQUENCIES = [
 # ----
 # Main Part
 # ----
+
+START_YEAR = pd.Timestamp(START_DATE).year
+END_YEAR   = pd.Timestamp(END_DATE).year
 
 def equal_weight_targets(start_year: int = START_YEAR, end_year: int = END_YEAR) -> pd.DataFrame:
     """

@@ -27,6 +27,10 @@ from config import START_DATE, END_DATE
 from portfolio import build_portfolio, load_prices
 from universe import tickers as UNIVERSE
 
+# ---- 
+# Variables
+# ----
+
 MODEL_NAME = "market_cap_no_trans"          # change per run; costs live in config.py
 
 FREQUENCIES = [
