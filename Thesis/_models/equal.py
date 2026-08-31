@@ -36,6 +36,9 @@ FREQUENCIES = [
     'Yearly',
 ]
 
+# ----
+# Main Part
+# ----
 
 def equal_weight_targets(start_year: int = START_YEAR, end_year: int = END_YEAR) -> pd.DataFrame:
     """

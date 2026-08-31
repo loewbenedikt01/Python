@@ -1,10 +1,17 @@
 """
-Equal-weight baseline.
+Market-capitalisation weighted baseline.
 
-Assigns 1/N to the N names in each year's investable universe
-(universe.tickers[year-1]).  The shared portfolio engine handles monthly
-rebalancing, weight drift, turnover and transaction costs; `export` writes the
-standard output tree under _output/equal_weight/.
+Each calendar year Y starts from the end-of-(Y-1) market caps in universe.py.
+Within the year the cap of each name drifts with its share price:
+
+    mcap_i(t) = mcap0_i * price_i(t) / price_i(first trading day of year Y)
+
+so a February rebalance uses the January price move, a March rebalance the
+Jan-Feb move, and so on.  Weights are those drifted caps, renormalised to 1.
+At each new year the caps reset to the fresh universe.py values.
+
+The shared portfolio engine handles the actual rebalancing, drift between
+rebalances, turnover and costs.  Output tree: _output/market_cap/.
 """
 
 import sys
@@ -17,43 +24,62 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "_metrics"))
 
 import export
 from config import START_DATE, END_DATE
-from portfolio import build_portfolio, universe_for
+from portfolio import build_portfolio, load_prices
+from universe import tickers as UNIVERSE
 
-"""
-For each run, change:
-
-'MODEL_NAME' 
-'TRANSACTION_COSTS' in 'config.py
-"""
-
-MODEL_NAME       = 'equal_weight_no_trans'           # change to no trans or whatever u run
-START_YEAR = pd.Timestamp(START_DATE).year
-END_YEAR   = pd.Timestamp(END_DATE).year
+MODEL_NAME = "market_cap_no_trans"          # change per run; costs live in config.py
 
 FREQUENCIES = [
-    'Monthly',
-    'Quarterly',
-    'Yearly',
+    "Monthly", 
+    "Quarterly", 
+    "Yearly"
 ]
 
+# ----
+# Main Part
+# ----
 
-def equal_weight_targets(start_year: int = START_YEAR, end_year: int = END_YEAR) -> pd.DataFrame:
+_UNI_YEARS = sorted(UNIVERSE)
+
+def _initial_caps(year: int) -> list[tuple[str, float]]:
+    """(ticker, end-of-(year-1) market cap) for the names investable in `year`."""
+    y = min(max(year - 1, _UNI_YEARS[0]), _UNI_YEARS[-1])
+    return UNIVERSE[y]
+
+
+def market_cap_targets(prices: pd.DataFrame) -> pd.DataFrame:
     """
-    One target row per year (dated Jan 1) holding that year's universe at 1/N.
-    build_portfolio upsamples this to monthly rebalances.
+    A target-weight row for the first trading day of every month, weights =
+    price-drifted market caps (see module docstring).  build_portfolio samples
+    whichever rebalance frequency it is asked for.
     """
+    cal = prices.loc[START_DATE:END_DATE].index
+    month_firsts = cal[~cal.to_period("M").duplicated()]
+
     rows = {}
-    for year in range(start_year, end_year + 1):
-        uni = universe_for(year)
-        rows[pd.Timestamp(year, 1, 1)] = pd.Series(1.0 / len(uni), index=uni)
+    for d in month_firsts:
+        anchor = cal[cal.year == d.year][0]          # first trading day of the year
+        caps = {}
+        for ticker, mcap0 in _initial_caps(d.year):
+            if ticker not in prices.columns:
+                continue
+            p_now, p_anchor = prices.at[d, ticker], prices.at[anchor, ticker]
+            if pd.isna(p_now) or pd.isna(p_anchor) or p_anchor == 0:
+                continue
+            caps[ticker] = mcap0 * p_now / p_anchor
+        s = pd.Series(caps, dtype=float)
+        if s.sum() > 0:
+            rows[d] = s / s.sum()
     return pd.DataFrame(rows).T
 
 
 def main() -> None:
-    targets = equal_weight_targets()
+    prices = load_prices()
+    targets = market_cap_targets(prices)
+
     for frequency in FREQUENCIES:
-        res = build_portfolio(targets, frequency=frequency)
-        name = f"equal_weight/{MODEL_NAME}_{frequency.lower()}"        # _output/equal_weight/equal_weight_monthly/...
+        res = build_portfolio(targets, frequency=frequency, prices=prices)
+        name = f"market_cap/{MODEL_NAME}_{frequency.lower()}"
 
         export.build_report(
             name,
@@ -66,8 +92,8 @@ def main() -> None:
             },
         )
 
-        print(f"{name:24s} {len(res.log_returns):5d} days  "
-              f"cum {np.expm1(res.log_returns.sum()):7.1%}  "
+        print(f"{name:34s} {len(res.log_returns):5d} days  "
+              f"cum {np.expm1(res.log_returns.sum()):8.1%}  "
               f"avg turnover {res.turnover.iloc[1:].mean():.3f}")
 
 
