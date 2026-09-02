@@ -6,10 +6,98 @@ Data Reported End of year for the next year
 1997 = 31.12.1997
 -> used for 1998 Portfolio allocation
 
+1989-1995 back-filled from finhacker.cz (end-of-year mega-cap top 20) to extend
+ML training history.  1996 is a PLACEHOLDER (copy of 1995) — replace with the
+real end-1996 list.  Market-cap values are consumed by mcap.py (anchor weight
+for the cap-weighted benchmark); every other consumer uses only the tickers.
+
+Ticker flags on the back-filled rows:
+  †  added to database_download.py for this back-fill (not in the original
+     43-name set): FNMA, MCD, MMM, MO, BA, SLB.  Confirm the re-pull carried
+     full history before trusting the early years.
+  ‡  yfinance serves the price history, but the series is spliced or the
+     entity changed — see notes at the bottom of this file.
+
+Kellogg (K) was in the 1991 top 20 but is DROPPED: Kellanova was acquired by
+Mars (Aug 2025) and delisted, and yfinance no longer returns its history.
+1991 therefore has 19 names.
 """
 
 
 tickers = {
+
+    1989: [
+        ("XOM",   62.59),  ("IBM",   52.03),  ("GE",    35.78),
+        ("BMY",   28.00),  ("MRK",   27.58),  ("KO",    26.37),
+        ("WMT",   25.39),  ("PG",    22.99),  ("VZ",    21.99),
+        ("JNJ",   19.77),  ("LLY",   19.06),  ("PEP",   16.86),
+        ("DIS",   15.17),  ("T",     14.37),  ("MMM",   14.36),
+        ("AIG",   14.01),  ("BA",    13.68),  ("MCD",   12.77),
+        ("PFE",   10.90),  ("SLB",   10.37),
+    ],
+    1990: [
+        ("XOM",   64.43),  ("IBM",   61.68),  ("WMT",   34.23),
+        ("BMY",   33.40),  ("MRK",   31.31),  ("KO",    31.07),
+        ("GE",    30.00),  ("PG",    29.79),  ("JNJ",   23.90),
+        ("VZ",    21.08),  ("PEP",   20.50),  ("LLY",   19.58),
+        ("BA",    15.59),  ("MMM",   15.17),  ("DIS",   13.51),
+        ("AIG",   13.49),  ("PFE",   12.67),  ("T",     12.58),
+        ("SLB",   12.24),  ("MO",    11.27),
+    ],
+    1991: [
+        ("XOM",   75.61),  ("WMT",   67.61),  ("MRK",   57.94),
+        ("KO",    53.33),  ("IBM",   48.54),  ("BMY",   43.64),
+        ("GE",    39.57),  ("JNJ",   38.14),  ("PG",    31.52),
+        ("PEP",   26.73),  ("PFE",   26.27),  ("LLY",   24.42),
+        ("VZ",    19.11),  ("FNMA",  18.76),  ("MO",    17.35),
+        ("AIG",   17.28),  ("MMM",   16.80),  ("BA",    16.30),
+        ("DIS",   14.97),
+    ],
+    1992: [
+        ("XOM",   75.92),  ("WMT",   73.55),  ("KO",    54.72),
+        ("MRK",   44.66),  ("GE",    43.78),  ("PG",    36.21),
+        ("BMY",   33.28),  ("PEP",   33.16),  ("JNJ",   33.10),
+        ("IBM",   27.50),  ("DIS",   23.03),  ("PFE",   22.36),
+        ("HD",    22.32),  ("VZ",    22.24),  ("FNMA",  20.79),
+        ("AIG",   20.31),  ("INTC",  18.21),  ("LLY",   17.78),
+        ("MMM",   17.74),  ("MCD",   17.72),
+    ],
+    1993: [
+        ("XOM",   78.40),  ("KO",    57.90),  ("WMT",   57.46),
+        ("GE",    53.71),  ("MRK",   38.78),  ("PG",    38.61),
+        ("PEP",   32.66),  ("IBM",   31.38),  ("JNJ",   28.86),
+        ("BMY",   28.39),  ("CVX",   28.38),  ("INTC",  25.92),
+        ("VZ",    25.85),  ("AIG",   23.07),  ("DIS",   22.92),
+        ("FNMA",  21.31),  ("PFE",   21.00),  ("MCD",   20.16),
+        ("MMM",   18.80),  ("T",     18.66),
+    ],
+    1994: [
+        ("XOM",   75.42),  ("KO",    66.32),  ("GE",    52.23),
+        ("WMT",   48.84),  ("MRK",   43.25),  ("PG",    42.14),
+        ("IBM",   41.23),  ("MSFT",  35.48),  ("JNJ",   35.20),
+        ("CVX",   29.07),  ("PEP",   28.73),  ("BMY",   28.13),
+        ("INTC",  26.47),  ("AIG",   25.64),  ("DIS",   24.14),
+        ("PFE",   23.07),  ("VZ",    21.70),  ("HD",    20.78),
+        ("MCD",   20.43),  ("FNMA",  19.84),
+    ],
+    1995: [
+        ("XOM",  100.74),  ("KO",    93.20),  ("GE",    73.57),
+        ("MRK",   72.73),  ("PG",    56.51),  ("JNJ",   55.38),
+        ("MSFT",  51.98),  ("WMT",   51.06),  ("IBM",   48.72),
+        ("INTC",  47.05),  ("PEP",   43.95),  ("BMY",   41.24),
+        ("PFE",   37.98),  ("AIG",   36.35),  ("CVX",   34.15),
+        ("FNMA",  33.65),  ("MCD",   31.43),  ("LLY",   31.02),
+        ("DIS",   30.91),  ("VZ",    29.25),
+    ],
+    1996: [
+        ("KO",   130.56),  ("XOM",  121.72),  ("INTC", 107.55),
+        ("MSFT",  99.41),  ("GE",    97.40),  ("MRK",   86.42),
+        ("IBM",   73.51),  ("PG",    72.53),  ("JNJ",   66.29),
+        ("WMT",   52.17),  ("BMY",   51.90),  ("PFE",   50.73),
+        ("DIS",   47.08),  ("PEP",   45.63),  ("CVX",   42.45),
+        ("AIG",   42.15),  ("CSCO",  41.72),  ("LLY",   40.37),
+        ("FNMA",  39.76),  ("JPM",   38.49),
+    ],
     1997: [
         ("KO",    164.75),  ("MSFT",  157.36),  ("XOM",   150.34),
         ("GE",    143.39),  ("INTC",  114.37),  ("MRK",   113.80),
@@ -263,3 +351,29 @@ tickers = {
         ("PG",     393.14), ("HD",     386.41),
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# yfinance retrieval notes for the 1989-1995 back-fill (‡ rows)
+#
+#   FNMA  Fannie Mae.  NYSE ticker was FNM; delisted Sep-2010, now trades OTC
+#         as FNMA.  yfinance serves full history (~1985+), but it is no longer
+#         an exchange-listed / index-eligible equity.
+#   T     yfinance 'T' splices the pre-breakup-lineage AT&T Corp (the 1989/1990/
+#         1993 constituent) with SBC Communications, which acquired AT&T in 2005
+#         and took its name and ticker.  Continuous series, different company
+#         after 2005.
+#   VZ    the 1989-1999 constituent is Bell Atlantic (ticker BEL); it became
+#         Verizon (VZ) after the 2000 Bell Atlantic + GTE merger.  yfinance 'VZ'
+#         history is continuous across the change.
+#   MO    Philip Morris Companies until the 2003 rename to Altria; ticker 'MO'
+#         throughout.  Philip Morris International (PM) was spun out in 2008.
+#
+# K (Kellogg, 1991 #20) is not recoverable: Oct-2023 split into Kellanova ('K')
+# and WK Kellogg ('KLG'), then Kellanova was acquired by Mars and delisted in
+# Aug 2025 — yfinance now returns YFPricesMissingError for 'K'.  Dropped from
+# the 1991 list.
+#
+# MCD, MMM, BA, SLB have clean deep history on yfinance; they were simply
+# missing from the original database and are added by the back-fill.
+# ---------------------------------------------------------------------------

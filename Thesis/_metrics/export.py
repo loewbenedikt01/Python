@@ -78,6 +78,7 @@ RAW_TIMESERIES_ML = [
     'hyperparameters',
     'feature_importance',
     'r2_selected',
+    'val_ic',
     'r2_raw_vs_zero',
     'spearman_p',
     'directional_accuracy',

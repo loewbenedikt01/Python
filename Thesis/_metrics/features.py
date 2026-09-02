@@ -1,7 +1,7 @@
 """
 Feature definitions for the ML portfolio models (xgb / rf / lstm).
 
-`features(db, asof)` returns one row per ticker of 56 stock-level features,
+`features(db, asof)` returns one row per ticker of 54 stock-level features,
 each ranked cross-sectionally on the as-of date (rank in [0, 1]; a missing
 value maps to 0.5, the neutral rank).
 
@@ -15,7 +15,7 @@ Feature groups
 momentum / trend .... multi-horizon returns, 12-1 momentum, acceleration,
                       distance to 52w high/low, moving-average ratios, OLS
                       trend t-stat / R^2, information discreteness
-reversal ............ 1w / 1m reversal, Bollinger position, MA z-score, RSI,
+reversal ............ Bollinger position, MA z-score, RSI,
                       overnight vs intraday decomposition
 volatility .......... close-to-close vol (1/3/6/12m), Parkinson & Garman-Klass
                       range vol, downside vol, realised skew / kurtosis,
@@ -41,10 +41,10 @@ except ImportError:                       # allow standalone import
 # ----
 # Constants
 # ----
-ANN          = np.sqrt(TRADING_DAYS_PER_YEAR)
-MKT_TICKER   = "^GSPC"
-VIX_TICKER   = "^VIX"
-MIN_BARS     = 300                        # trailing bars the longest window needs
+ANN           = np.sqrt(TRADING_DAYS_PER_YEAR)
+MKT_TICKER    = "^GSPC"
+INDEX_TICKERS = ("^GSPC", "^VIX")         # not tradable — kept out of the cross-section
+MIN_BARS      = 300                       # trailing bars the longest window needs
 
 
 # ----
@@ -124,8 +124,6 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
 
 def _reversal(c: pd.DataFrame, ret: pd.DataFrame, o: pd.DataFrame) -> dict:
     f: dict = {}
-    f["rev_1w"] = -c.pct_change(5).iloc[-1]
-    f["rev_1m"] = -c.pct_change(21).iloc[-1]
 
     p20 = c.tail(20)
     f["bb_position"] = (c.iloc[-1] - p20.mean()) / (2 * p20.std())
@@ -241,6 +239,7 @@ def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
 
 def features(db: pd.DataFrame,
              asof=None,
+             universe: list | set | None = None,
              min_history: int = TRADING_DAYS_PER_YEAR,
              min_coverage: float = 0.9) -> pd.DataFrame:
     """
@@ -248,9 +247,11 @@ def features(db: pd.DataFrame,
     (default: last row of `db`).
 
     `db` is the wide (field, ticker) OHLCV panel from `load_db`.  Tickers with
-    less than `min_coverage` of `min_history` recent closes are dropped; every
-    feature is rank-transformed to [0, 1] across the surviving names, with
-    missing values filled at the neutral rank 0.5.
+    less than `min_coverage` of `min_history` recent closes are dropped; if
+    `universe` is given, ranking is restricted to those names (so ranks reflect
+    the investable set, not the full panel).  Every feature is rank-transformed
+    to [0, 1] across the surviving names, missing values filled at the neutral
+    rank 0.5.
     """
     if asof is not None:
         db = db.loc[:pd.Timestamp(asof)]
@@ -260,7 +261,9 @@ def features(db: pd.DataFrame,
     o_all, h_all, l_all, c_all = _adjust_ohlc(db)
     vol_all = db["Volume"]
 
-    tickers = [t for t in c_all.columns if t not in (MKT_TICKER, VIX_TICKER)]
+    tickers = [t for t in c_all.columns if t not in INDEX_TICKERS]
+    if universe is not None:
+        tickers = [t for t in tickers if t in set(universe)]
     recent  = c_all[tickers].tail(min_history)
     keep    = [t for t in tickers
                if recent[t].notna().sum() >= min_history * min_coverage]
@@ -291,16 +294,18 @@ def features(db: pd.DataFrame,
     return feat
 
 
-def features_panel(db: pd.DataFrame, dates) -> pd.DataFrame:
+def features_panel(db: pd.DataFrame, dates, universe_fn=None) -> pd.DataFrame:
     """
     Stack `features` over many as-of dates into a (date, ticker) MultiIndex
     frame -- the training matrix for the ML models.  Dates without enough
-    history are skipped.
+    history are skipped.  `universe_fn(date) -> tickers`, when given, restricts
+    the cross-section (and thus the ranking) per date.
     """
     frames: dict = {}
     for d in pd.DatetimeIndex(dates):
         try:
-            frames[d] = features(db, asof=d)
+            uni = universe_fn(d) if universe_fn is not None else None
+            frames[d] = features(db, asof=d, universe=uni)
         except ValueError:
             continue
     if not frames:

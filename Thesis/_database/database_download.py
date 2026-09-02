@@ -19,17 +19,17 @@ warnings.filterwarnings("ignore")
 
 OUTPUT_PATH = Path(r"C:\Users\benel\Coding\Python\Thesis\_database")
 
-START_DATE  = '1990-01-01'
+START_DATE  = '1988-01-01'
 END_DATE    = '2025-12-31'
 
-tickers             = [
+tickers         = [
     'AAPL', 'AIG', 'AMGN', 'AMZN', 'AVGO', 
-    'BAC', 'BMY', 'BRK-B', 'C', 'COST', 
-    'CSCO', 'CVX', 'DIS', 'GE', 'GOOGL', 
-    'HD', 'IBM', 'INTC', 'JNJ', 'JPM', 
-    'KO', 'LLY', 'MA', 'META', 'MRK', 
-    'MSFT', 'NVDA', 'ORCL', 'PEP', 'PFE', 
-    'PG', 'PM', 'PYPL', 'QCOM', 'T', 
+    'BA', 'BAC', 'BMY', 'BRK-B', 'C', 'COST', 
+    'CSCO', 'CVX', 'DIS', 'FNMA', 'GE', 'GOOGL', 
+    'HD', 'IBM', 'INTC', 'JNJ', 'JPM',
+    'KO', 'LLY', 'MA', 'MCD', 'META', 'MMM','MRK', 
+    'MSFT', 'MO', 'NVDA', 'ORCL', 'PEP', 'PFE', 
+    'PG', 'PM', 'PYPL', 'QCOM', 'SLB', 'T', 
     'TSLA', 'UNH', 'UPS', 'V', 'VZ', 
     'WFC', 'WMT', 'XOM',
 ]
@@ -39,12 +39,12 @@ vix_ticker          = '^VIX'
 
 all_tickers         = [
     'AAPL', 'AIG', 'AMGN', 'AMZN', 'AVGO', 
-    'BAC', 'BMY', 'BRK-B', 'C', 'COST', 
-    'CSCO', 'CVX', 'DIS', 'GE', 'GOOGL', 
-    'HD', 'IBM', 'INTC', 'JNJ', 'JPM', 
-    'KO', 'LLY', 'MA', 'META', 'MRK', 
-    'MSFT', 'NVDA', 'ORCL', 'PEP', 'PFE', 
-    'PG', 'PM', 'PYPL', 'QCOM', 'T', 
+    'BA', 'BAC', 'BMY', 'BRK-B', 'C', 'COST', 
+    'CSCO', 'CVX', 'DIS', 'FNMA', 'GE', 'GOOGL', 
+    'HD', 'IBM', 'INTC', 'JNJ', 'JPM',
+    'KO', 'LLY', 'MA', 'MCD', 'META', 'MMM','MRK', 
+    'MSFT', 'MO', 'NVDA', 'ORCL', 'PEP', 'PFE', 
+    'PG', 'PM', 'PYPL', 'QCOM', 'SLB', 'T', 
     'TSLA', 'UNH', 'UPS', 'V', 'VZ', 
     'WFC', 'WMT', 'XOM', '^VIX', '^GSPC',
 ]

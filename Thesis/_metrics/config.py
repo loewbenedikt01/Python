@@ -60,19 +60,26 @@ LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
 # ----
 # Configuration for XGB Weights Calculation
 # ----
-LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
 TRAIN_MONTHS_XGB        = 60
 VAL_MONTHS_XGB          = 24
-EARLY_STOPPING          = 10
+EARLY_STOPPING          = 50
 BASE_SEED               = [41, 42, 43, 44, 45]
-HYPERPARAMETER_GRID     = {
-    'learning_rate'     : [0.005, 0.01, 0.05],
-    'max_depth'         : [1, 2, 5, 10],
-    'min_child_weight'  : [1, 3, 5, 10],
-    'n_estimators'      : [100, 200, 300],
-    'gamma'             : [0.001, 0.005, 0.01],
-    'subsample'         : [0.7, 0.85, 1.0],
-    'colsample_bytree'  : [0.7, 0.85, 1.0],
-    
+
+XGB_FIXED = {
+    'learning_rate'     : 0.03,
+    'n_estimators'      : 1000,
+    'subsample'         : 0.8, 
+    'colsample_bytree'  : 0.8,
 }
+
+XGB_CONFIGS = [
+    {'max_depth': 2, 'min_child_weight': 5,  'reg_lambda': 1},
+    {'max_depth': 2, 'min_child_weight': 20, 'reg_lambda': 5},
+    {'max_depth': 3, 'min_child_weight': 5,  'reg_lambda': 1},
+    {'max_depth': 3, 'min_child_weight': 10, 'reg_lambda': 5},
+    {'max_depth': 3, 'min_child_weight': 20, 'reg_lambda': 10},
+    {'max_depth': 4, 'min_child_weight': 10, 'reg_lambda': 1},
+    {'max_depth': 4, 'min_child_weight': 20, 'reg_lambda': 5},
+    {'max_depth': 6, 'min_child_weight': 20, 'reg_lambda': 10},
+]
 
