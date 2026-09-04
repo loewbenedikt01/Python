@@ -24,8 +24,8 @@ Mars (Aug 2025) and delisted, and yfinance no longer returns its history.
 """
 
 
-tickers = {
 
+"""
     1989: [
         ("XOM",   62.59),  ("IBM",   52.03),  ("GE",    35.78),
         ("BMY",   28.00),  ("MRK",   27.58),  ("KO",    26.37),
@@ -98,6 +98,8 @@ tickers = {
         ("AIG",   42.15),  ("CSCO",  41.72),  ("LLY",   40.37),
         ("FNMA",  39.76),  ("JPM",   38.49),
     ],
+"""
+tickers = {
     1997: [
         ("KO",    164.75),  ("MSFT",  157.36),  ("XOM",   150.34),
         ("GE",    143.39),  ("INTC",  114.37),  ("MRK",   113.80),

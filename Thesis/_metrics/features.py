@@ -294,18 +294,66 @@ def features(db: pd.DataFrame,
     return feat
 
 
-def features_panel(db: pd.DataFrame, dates, universe_fn=None) -> pd.DataFrame:
+# (db fingerprint, as-of, universe) -> ranked feature frame.  `features` is a
+# pure function of these, and callers that rebuild overlapping panels (e.g. a
+# walk-forward refit with a per-rebalance fixed universe) hit the same
+# (as-of, universe) pairs many times.  Cleared with `clear_feature_cache()`.
+_PANEL_CACHE: dict = {}
+_PANEL_CACHE_STATS = {"hits": 0, "misses": 0}
+
+
+def _db_fingerprint(db: pd.DataFrame):
+    return (id(db), len(db.columns), db.index[0], db.index[-1])
+
+
+def clear_feature_cache() -> None:
+    """Drop the `features_panel` memo (call when `db` changes within a process)."""
+    _PANEL_CACHE.clear()
+    _PANEL_CACHE_STATS.update(hits=0, misses=0)
+
+
+def feature_cache_stats() -> dict:
+    """Cumulative memo activity: {'hits', 'misses', 'size'}."""
+    return {**_PANEL_CACHE_STATS, "size": len(_PANEL_CACHE)}
+
+
+def _features_cached(db: pd.DataFrame, asof: pd.Timestamp, universe) -> pd.DataFrame:
+    key = (_db_fingerprint(db), asof,
+           frozenset(universe) if universe is not None else None)
+    hit = _PANEL_CACHE.get(key)
+    if hit is not None:
+        _PANEL_CACHE_STATS["hits"] += 1
+        return hit
+    result = features(db, asof=asof, universe=universe)      # may raise ValueError
+    _PANEL_CACHE[key] = result
+    _PANEL_CACHE_STATS["misses"] += 1
+    return result
+
+
+def features_panel(db: pd.DataFrame, dates, universe_fn=None,
+                   universe: list | set | None = None) -> pd.DataFrame:
     """
     Stack `features` over many as-of dates into a (date, ticker) MultiIndex
     frame -- the training matrix for the ML models.  Dates without enough
-    history are skipped.  `universe_fn(date) -> tickers`, when given, restricts
-    the cross-section (and thus the ranking) per date.
+    history are skipped.
+
+    Cross-section control (give at most one):
+      * `universe`            -- one fixed set of names for every as-of date;
+      * `universe_fn(date)`   -- a per-date set (e.g. the universe of that year).
+    With neither, the full surviving panel is ranked.  Repeated
+    (as-of, universe) pairs are served from a process-level cache
+    (`clear_feature_cache()` to reset).
     """
+    if universe is not None and universe_fn is not None:
+        raise ValueError("pass `universe` or `universe_fn`, not both")
+    fixed = None if universe is None else list(universe)
+
     frames: dict = {}
     for d in pd.DatetimeIndex(dates):
+        uni = fixed if fixed is not None else (
+            universe_fn(d) if universe_fn is not None else None)
         try:
-            uni = universe_fn(d) if universe_fn is not None else None
-            frames[d] = features(db, asof=d, universe=uni)
+            frames[d] = _features_cached(db, d, uni)
         except ValueError:
             continue
     if not frames:

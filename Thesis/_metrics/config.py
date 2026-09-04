@@ -36,7 +36,7 @@ RISK_FREE_RATE          = 0.0
 # Configuration for Portfolio construction
 # ----
 MAX_HOLDINGS            = 20        # investable universe size (universe.py per year)
-TRANSACTION_COST_BPS    = 00        # charged on turnover at each rebalance
+TRANSACTION_COST_BPS    = 00        # charged on turnover at each rebalance [0, 0.1, 0.2], [none, realistic, conservative]
 MIN_WEIGHT              = 0.01      # min 1% weight allocation per stock  
 MAX_WEIGHT              = 0.10      # max 10% weight allocation per stock
 HORIZON_TRADING_DAYS = {
@@ -60,26 +60,25 @@ LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
 # ----
 # Configuration for XGB Weights Calculation
 # ----
-TRAIN_MONTHS_XGB        = 60
-VAL_MONTHS_XGB          = 24
-EARLY_STOPPING          = 50
+TRAINING_MONTHS_XGB     = 60        # fixed rolling training window (not expanding)
+EMBARGO_MONTHS_XGB = {
+    "Monthly":      1,              # gap between training end and validation start
+    "Quarterly":    3,
+    "Yearly":       12,
+}                                   
+VALIDATION_MONTHS_XGB   = 24        # fixed validation block ending at the rebalance date
 BASE_SEED               = [41, 42, 43, 44, 45]
 
 XGB_FIXED = {
-    'learning_rate'     : 0.03,
-    'n_estimators'      : 1000,
-    'subsample'         : 0.8, 
-    'colsample_bytree'  : 0.8,
+    'objective'        : 'reg:pseudohubererror',
+    'n_estimators'     : 300,
+    'subsample'        : 0.8,
+    'colsample_bytree' : 0.8,
 }
 
-XGB_CONFIGS = [
-    {'max_depth': 2, 'min_child_weight': 5,  'reg_lambda': 1},
-    {'max_depth': 2, 'min_child_weight': 20, 'reg_lambda': 5},
-    {'max_depth': 3, 'min_child_weight': 5,  'reg_lambda': 1},
-    {'max_depth': 3, 'min_child_weight': 10, 'reg_lambda': 5},
-    {'max_depth': 3, 'min_child_weight': 20, 'reg_lambda': 10},
-    {'max_depth': 4, 'min_child_weight': 10, 'reg_lambda': 1},
-    {'max_depth': 4, 'min_child_weight': 20, 'reg_lambda': 5},
-    {'max_depth': 6, 'min_child_weight': 20, 'reg_lambda': 10},
-]
-
+XGB_GRID = {
+    'learning_rate'     : [0.005, 0.01, 0.03],
+    'max_depth'         : [1, 2, 3],
+    'min_child_weight'  : [1, 5, 10, 20],
+    'reg_lambda'        : [1, 5, 10],
+}
