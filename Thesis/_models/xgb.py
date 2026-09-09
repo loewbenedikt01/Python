@@ -48,9 +48,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME  = "xgb_no_trans_test_2"        # change per run
-REGIME      = 0                     # 0 | 1 | 2  — see regime_of()
-TRAIN_START = "1990-01-01"          # training history start
+MODEL_NAME  = "xgb_no_trans_test_3"        # change per run
+TRAIN_START = "1990-01-01"
 
 FREQUENCIES = [
     #"Monthly",
@@ -60,15 +59,106 @@ FREQUENCIES = [
 
 
 # ----
-# Regime hook
+# Regime implementation
 # ----
 
-def regime_of(dates) -> pd.Series:
+DETECTOR = "none"       # "none" | "hmm" | "wasserstein" | "changepoint"
+REGIME   = None         # None | "calm" | "crisis"
+
+
+def regime_probs(dates) -> pd.DataFrame:
     """
-    Map each date to a regime label in {0, 1, 2}.  Placeholder: everything is
-    regime 0.  Replace with the real 3-regime classifier later.
+    One row per date, columns ['p_calm', 'p_crisis'], summing to 1.  These are
+    p_next (one-step-ahead forecasts), not filtered probabilities.  States are
+    sorted by in-state realized volatility at every refit, so 'crisis' is always
+    the high-vol state.
     """
-    return pd.Series(0, index=pd.DatetimeIndex(dates), name="regime")
+    idx = pd.DatetimeIndex(dates)
+    if DETECTOR == "none":
+        return pd.DataFrame({"p_calm": 1.0, "p_crisis": 0.0}, index=idx)
+    if DETECTOR == "changepoint":
+        sys.path.append(str(Path(__file__).resolve().parents[1]))
+        from _regimes.changepoint.main import crisis_probs
+        return crisis_probs(idx)
+    raise NotImplementedError(DETECTOR)
+
+
+def _regime_label(dates) -> pd.Series:
+    """Hard {calm, crisis} label from p_crisis -- only for the REGIME hard-split spec."""
+    p = regime_probs(pd.DatetimeIndex(dates))["p_crisis"]
+    return pd.Series(np.where(p.to_numpy() > 0.5, "crisis", "calm"),
+                     index=p.index, name="regime")
+
+
+# ---- Channel 1: sample weights (primary) --------------------------------------
+USE_REGIME_WEIGHTS = True
+REGIME_DECAY_HL    = None
+
+def _obs_weights(tr_months, d):
+    """Observation weight per training month: resemblance to d's expected regime."""
+    if not USE_REGIME_WEIGHTS:
+        return None
+    P      = regime_probs(tr_months.union(pd.DatetimeIndex([d])))
+    p_now  = float(P.loc[d, "p_crisis"])
+    p_hist = P.loc[tr_months, "p_crisis"].to_numpy()
+    w = p_hist * p_now + (1.0 - p_hist) * (1.0 - p_now)
+    if REGIME_DECAY_HL:
+        age = (d - tr_months).days / 30.44
+        w  = w * 0.5 ** (age / REGIME_DECAY_HL)
+    w = np.clip(w, 1e-6, None)
+    return pd.Series(w / w.mean(), index=tr_months)
+
+
+# ---- Channel 2: interaction features ----------------------------------------
+USE_REGIME_FEATURES = True
+INTERACT_ON = ["mom_12_1", "beta_12m", "vol_3m",
+               "downside_beta_12m", "dollar_vol_level"]
+
+_regfeat_log = {"done": False}
+
+def _add_regime_features(panel: pd.DataFrame) -> pd.DataFrame:
+    """
+    Append f"{feat}_x_crisis" = (rank - 0.5) * p_crisis for each INTERACT_ON
+    feature.  Panel features are cross-sectional ranks in (0, 1], so centring at
+    0.5 makes the interaction symmetric and the split points interpretable.  Raw
+    p_crisis is never added as a column: it is constant within a date, so a split
+    on it just partitions by date with zero gain.
+    """
+    if not USE_REGIME_FEATURES:
+        return panel
+    dates = panel.index.get_level_values("date")
+    pc = regime_probs(dates.unique())["p_crisis"].reindex(dates).to_numpy()
+    cols = {f"{f}_x_crisis": (panel[f].to_numpy() - 0.5) * pc for f in INTERACT_ON}
+    all_zero = not any(np.any(v) for v in cols.values())
+    if all_zero:
+        if not _regfeat_log["done"]:
+            print(f"[xgb] Channel 2: built {len(cols)} _x_crisis cols "
+                  f"({', '.join(cols)}), all exactly 0 -> not appended "
+                  f"(keeps colsample_bytree subsets identical)", flush=True)
+            _regfeat_log["done"] = True
+        return panel
+    return panel.assign(**cols)
+
+
+# ---- Channel 3: rank sharpness --------------------------------------------
+USE_REGIME_THETA = True
+THETA_CALM, THETA_CRISIS = 1.0, 0.0       # exponent on the pct-rank; 0 -> equal weight
+ENTER_CRISIS, EXIT_CRISIS = 0.6, 0.4      # Schmitt trigger (hysteresis kills turnover churn)
+
+_crisis_state = {"on": False}
+
+def _theta(d) -> float:
+    """Rank-sharpness exponent for rebalance date d.  Stateful: call once per date, in order."""
+    if not USE_REGIME_THETA:
+        return 1.0
+    p = float(regime_probs([d])["p_crisis"].iloc[0])
+    if _crisis_state["on"]:
+        _crisis_state["on"] = p > EXIT_CRISIS
+    else:
+        _crisis_state["on"] = p > ENTER_CRISIS
+    pc = 1.0 if _crisis_state["on"] else 0.0
+    return pc * THETA_CRISIS + (1.0 - pc) * THETA_CALM
+
 
 
 # ----
@@ -179,13 +269,13 @@ def _rank_ic(y_true, y_pred, dates) -> float:
     return float(np.nanmean(ics)) if ics else np.nan
 
 
-def _fit_one(X_tr, y_tr, params: dict, seed: int) -> XGBRegressor:
+def _fit_one(X_tr, y_tr, params: dict, seed: int, sw=None) -> XGBRegressor:
     m = _make_model(params, seed)
-    m.fit(X_tr, y_tr, verbose=False)
+    m.fit(X_tr, y_tr, sample_weight=sw, verbose=False)
     return m
 
 
-def _train(X_tr, y_tr, X_val, y_val):
+def _train(X_tr, y_tr, X_val, y_val, month_w=None):
     """
     Fit every (grid point, seed) in GRID x BASE_SEED and keep them all — no
     search, no selection.  Inference averages the raw predictions across the
@@ -194,13 +284,20 @@ def _train(X_tr, y_tr, X_val, y_val):
     full XGB_FIXED['n_estimators'] rounds (no early stopping), so there is no
     per-model tree count to record.  Returns (models, ensemble val_r2, ensemble
     val_ic, mean feature importance).
+
+    `month_w` (Channel 1): per training-month observation weights, expanded to
+    rows and passed through as sample_weight.  All-ones -> passed as None so the
+    fit is bit-identical to unweighted training.
     """
     y_val_np  = y_val.to_numpy()
     val_dates = y_val.index.get_level_values("date")
     sst = float(np.sum((y_val_np - y_val_np.mean()) ** 2)) or np.nan
+    sw = None
+    if month_w is not None:
+        sw = month_w.reindex(X_tr.index.get_level_values("date")).to_numpy()
 
     models = Parallel(n_jobs=-1, backend="threading")(
-        delayed(_fit_one)(X_tr, y_tr, p, seed)
+        delayed(_fit_one)(X_tr, y_tr, p, seed, sw)
         for seed in BASE_SEED for p in GRID
     )
 
@@ -237,10 +334,12 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     fwd = _forward_returns(prices, h)
     fwd_stack = fwd.stack()
     fwd_stack.index = fwd_stack.index.set_names(["date", "ticker"])
-    # target is purely cross-sectional: strip the date-level (market) mean
     fwd_stack = fwd_stack - fwd_stack.groupby(level="date").transform("mean")
     resolve = _resolve_dates(prices, train_firsts, h)
-    regime = regime_of(train_firsts)
+    regime = _regime_label(train_firsts) if REGIME is not None else None
+    min_tr = 24 if REGIME is not None else TRAINING_MONTHS_XGB
+    _crisis_state["on"] = False
+    _regfeat_log["done"] = False
     embargo_months = EMBARGO_MONTHS_XGB[frequency]
 
     def _slice(panel, panel_dates, months):
@@ -253,35 +352,26 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     imp_rows: dict[pd.Timestamp, pd.Series] = {}
     r2_sel:   dict[pd.Timestamp, float] = {}
     ic_val:   dict[pd.Timestamp, float] = {}
-    win_log:  list[tuple] = []          # (d, n_train_months, n_val_months)
+    win_log:  list[tuple] = []
     reject:   dict[pd.Timestamp, str] = {}
 
-    # ---- pass 1: which rebalance dates will actually train?  (cheap, no fitting)
-    # month-has-feature-rows can't be checked here any more (the panel is built
-    # per date in pass 2); thin windows fall out on the row-count guards below.
-    todo: list[tuple] = []              # (d, tr_months, va_months)
+    # ---- pass 1: which rebalance dates will actually train?
+    todo: list[tuple] = []
     for d in reb_dates:
-        # fixed rolling point-in-time window ending strictly before d (no
-        # expansion — the same span at every rebalance):
-        #   [d - V - E - T, d - V - E)  -> training   (T = TRAINING_MONTHS_XGB)
-        #   [d - V,         d)          -> validation / HP tuning  (V = VALIDATION_MONTHS_XGB)
-        # the E-month embargo (EMBARGO_MONTHS_XGB[frequency]) between the blocks
-        # drops training months whose label horizon would overlap validation; a
-        # month t still enters only once resolve[t] < d (label realised before d).
         val_lo   = d - pd.DateOffset(months=VALIDATION_MONTHS_XGB)
         train_hi = val_lo - pd.DateOffset(months=embargo_months)
         train_lo = train_hi - pd.DateOffset(months=TRAINING_MONTHS_XGB)
 
-        pit = train_firsts[
-            (train_firsts < d)
-            & resolve.reindex(train_firsts).lt(d).to_numpy()
-            & regime.reindex(train_firsts).eq(REGIME).to_numpy()
-        ]
+        keep = ((train_firsts < d)
+                & resolve.reindex(train_firsts).lt(d).to_numpy())
+        if REGIME is not None:
+            keep = keep & regime.reindex(train_firsts).eq(REGIME).to_numpy()
+        pit = train_firsts[keep]
         tr_months = pit[(pit >= train_lo) & (pit < train_hi)][-TRAINING_MONTHS_XGB:]
         va_months = pit[pit >= val_lo]
         win_log.append((d, len(tr_months), len(va_months)))
-        if len(tr_months) < TRAINING_MONTHS_XGB:
-            reject[d] = f"train months {len(tr_months)} < {TRAINING_MONTHS_XGB}"
+        if len(tr_months) < min_tr:
+            reject[d] = f"train months {len(tr_months)} < {min_tr}"
             continue
         if len(va_months) < 6:
             reject[d] = f"val months {len(va_months)} < 6"
@@ -295,9 +385,6 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     # ---- pass 2: fit + select per rebalance date, with live progress / ETA
     t_start = time.time()
     for i, (d, tr_months, va_months) in enumerate(todo, 1):
-        # panel rebuilt here: cross-section pinned to the traded universe of d's
-        # year for every training row (overlapping (as-of, universe) pairs are
-        # memoised inside features_panel).
         uni_year = universe_for(d.year)
         want = tr_months.union(va_months).union(pd.DatetimeIndex([d]))
         try:
@@ -305,6 +392,7 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         except ValueError:
             reject[d] = "no feature rows in window"
             continue
+        panel = _add_regime_features(panel)
         feat_cols = list(panel.columns)
         panel_dates = panel.index.get_level_values("date")
         if d not in panel_dates:
@@ -322,26 +410,36 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             reject[d] = f"universe {len(uni)} < 2"
             continue
 
+        month_w = _obs_weights(tr_months, d)
+        n_eff = (float(month_w.sum() ** 2 / (month_w ** 2).sum())
+                 if month_w is not None else float(len(tr_months)))
+
         t0 = time.time()
-        models, val_r2, val_ic, importance = _train(X_tr, y_tr, X_va, y_va)
+        models, val_r2, val_ic, importance = _train(X_tr, y_tr, X_va, y_va, month_w)
         dt = time.time() - t0
         elapsed = time.time() - t_start
         eta = elapsed / i * (len(todo) - i)
 
+        th = _theta(d)
         Xd = panel.loc[d].reindex(uni)[feat_cols]
         pred = pd.Series(_predict(models, Xd), index=uni)
-        w = _apply_box(pred.rank(pct=True).to_numpy(), *_weight_box(len(uni)))
+        r = pred.rank(pct=True).to_numpy()
+        w = _apply_box(r if th == 1.0 else r ** th, *_weight_box(len(uni)))
 
         rows[d] = pd.Series(w, index=uni)
         preds[d] = pred
         imp_rows[d] = importance
-        r2_sel[d] = val_r2          # ensemble val R^2 vs the val block's own mean;
-                                    # target is demeaned so this is ~0 by construction
+        r2_sel[d] = val_r2
         ic_val[d] = val_ic
 
+        reg_tag = ""
+        if month_w is not None:
+            reg_tag = f" n_eff={n_eff:.0f}/{len(tr_months)}"
+        if th != 1.0:
+            reg_tag += f" theta={th:.2f}"
         print(f"[xgb] {frequency} {d.date()}  {i:>3}/{len(todo)}  "
               f"train={len(tr_months)}mo/{len(y_tr)}r val={len(va_months)}mo names={len(uni)}  "
-              f"{len(models)} models  {_fmt(dt)}  valIC={val_ic:+.3f}  "
+              f"{len(models)} models  {_fmt(dt)}  valIC={val_ic:+.3f}{reg_tag}  "
               f"elapsed {_fmt(elapsed)} / ETA {_fmt(eta)}", flush=True)
 
     targets = pd.DataFrame(rows).T
@@ -374,8 +472,7 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
               f"({cs['hits'] / looked:.0%}), {cs['size']} unique (as-of, universe) frames "
               f"built (cumulative over run)")
 
-    # ── out-of-sample skill, once each horizon has resolved ──
-    # realised return is demeaned within the date, matching the training target.
+    # ── out-of-sample skill
     r2_oos, sp_rho, sp_p, dir_acc = {}, {}, {}, {}
     for d, pred in preds.items():
         realized = fwd.loc[d].reindex(pred.index).dropna()
@@ -388,8 +485,6 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         sp_rho[d], sp_p[d] = float(rho), float(pv)
         dir_acc[d] = float(np.mean(np.sign(p) == np.sign(r)))
 
-    # the ensemble spec is identical at every rebalance date (full grid x every
-    # seed, no selection), so it is recorded once rather than per date.
     hp_spec = pd.DataFrame(GRID).assign(**XGB_FIXED,
                                         seeds=", ".join(map(str, BASE_SEED)))
     hp_spec.index.name = "config"
@@ -411,11 +506,18 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 # ----
 
 def main() -> None:
-    if REGIME != 0 and regime_of(pd.DatetimeIndex([pd.Timestamp(START_DATE)])).eq(0).all():
+    stub = (DETECTOR == "none" and
+            float(regime_probs(pd.DatetimeIndex([pd.Timestamp(START_DATE)]))["p_crisis"].iloc[0]) == 0.0)
+    if REGIME is not None and stub:
         raise NotImplementedError(
-            f"REGIME = {REGIME} but regime_of() is still the stub (returns 0). "
-            "Build the 3-regime classifier before running a non-zero regime."
+            f"REGIME = {REGIME!r} (hard-split spec) but DETECTOR = 'none', so regime_probs() "
+            "is the stub (p_crisis = 0 everywhere) and every month labels 'calm'. "
+            "Pick a real DETECTOR before running a hard split."
         )
+    if stub and (USE_REGIME_WEIGHTS or USE_REGIME_FEATURES or USE_REGIME_THETA):
+        print("[xgb] NOTE: regime channels enabled but DETECTOR='none' -> stub p_crisis=0; "
+              "this run must reproduce the un-regimed result bit-for-bit (regression test).",
+              flush=True)
 
     prices = load_prices()
     db = load_db()
