@@ -57,10 +57,10 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME = "hrp_s_a_no_trans"          # change per run; costs live in config.py
+MODEL_NAME = "hrp_t_0.1_s_w"          # change per run; costs live in config.py
 
 COV_METHOD = "sample"           # "sample" | "ledoit_wolf"
-LINKAGE    = "average"                # "single" | "ward" | "average"
+LINKAGE    = "ward"                # "single" | "ward" | "average"
 
 FREQUENCIES = [
     "Monthly",

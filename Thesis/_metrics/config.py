@@ -36,7 +36,7 @@ RISK_FREE_RATE          = 0.0
 # Configuration for Portfolio construction
 # ----
 MAX_HOLDINGS            = 20        # investable universe size (universe.py per year)
-TRANSACTION_COST_BPS    = 00        # charged on turnover at each rebalance [0, 0.1, 0.2], [none, realistic, conservative]
+TRANSACTION_COST_BPS    = 10        # charged on turnover at each rebalance [0, 10, 20], [none, realistic, conservative]
 MIN_WEIGHT              = 0.01      # min 1% weight allocation per stock  
 MAX_WEIGHT              = 0.10      # max 10% weight allocation per stock
 HORIZON_TRADING_DAYS = {
@@ -58,6 +58,11 @@ LOOKBACK_MONTHS_MVO     = 60        # 60 months lookback window for calculation
 LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
 
 # ----
+# Configuration for XGB + RF
+# ----
+BASE_SEED               = [41, 42, 43, 44, 45]
+
+# ----
 # Configuration for XGB Weights Calculation
 # ----
 TRAINING_MONTHS_XGB     = 60        # fixed rolling training window (not expanding)
@@ -67,7 +72,6 @@ EMBARGO_MONTHS_XGB = {
     "Yearly":       12,
 }                                   
 VALIDATION_MONTHS_XGB   = 24        # fixed validation block ending at the rebalance date
-BASE_SEED               = [41, 42, 43, 44, 45]
 
 XGB_FIXED = {
     'objective'        : 'reg:pseudohubererror',
@@ -81,4 +85,52 @@ XGB_GRID = {
     'max_depth'         : [1, 2, 3],
     'min_child_weight'  : [1, 5, 10, 20],
     'reg_lambda'        : [1, 5, 10],
+}
+
+# ----
+# Configuration for RF Weights Calculation
+# ----
+TRAINING_MONTHS_RF      = 60        # fixed rolling training window (not expanding)
+EMBARGO_MONTHS_RF  = {
+    "Monthly":      1,              # gap between training end and validation start
+    "Quarterly":    3,
+    "Yearly":       12,
+}                                   
+VALIDATION_MONTHS_RF    = 24        # fixed validation block ending at the rebalance date
+
+RF_FIXED = {
+    'n_estimators'     : 300,
+    'max_samples'      : 0.7,
+    'bootstrap'        : True,
+    'criterion'        : "squared_error",
+}
+
+RF_GRID = {
+    'max_features'      : ["sqrt", 0.33, 0.5],
+    'max_depth'         : [3, 5, 10, None],
+    'min_samples_leaf'  : [5, 10, 20, 50],
+}
+
+# ----
+# Configuration for RF Weights Calculation
+# ----
+TRAINING_MONTHS_RF      = 60        # fixed rolling training window (not expanding)
+EMBARGO_MONTHS_RF  = {
+    "Monthly":      1,              # gap between training end and validation start
+    "Quarterly":    3,
+    "Yearly":       12,
+}                                   
+VALIDATION_MONTHS_RF    = 24        # fixed validation block ending at the rebalance date
+
+RF_FIXED = {
+    'n_estimators'     : 300,
+    'max_samples'      : 0.7,
+    'bootstrap'        : True,
+    'criterion'        : "squared_error",
+}
+
+RF_GRID = {
+    'max_features'      : ["sqrt", 0.33, 0.5],
+    'max_depth'         : [3, 5, 10, None],
+    'min_samples_leaf'  : [5, 10, 20, 50],
 }

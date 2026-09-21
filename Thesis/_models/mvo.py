@@ -50,8 +50,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME = "mvo_ledoit_wolf_no_trans"          # change per run; costs live in config.py
-COV_METHOD = "ledoit_wolf"           # "sample" | "ledoit_wolf"
+MODEL_NAME = "mvo_t_0.1_s"          # change per run; costs live in config.py
+COV_METHOD = "sample"           # "sample" | "ledoit_wolf"
 
 FREQUENCIES = [
     "Monthly",
