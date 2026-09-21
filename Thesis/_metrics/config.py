@@ -114,23 +114,22 @@ RF_GRID = {
 # ----
 # Configuration for RF Weights Calculation
 # ----
-TRAINING_MONTHS_RF      = 60        # fixed rolling training window (not expanding)
-EMBARGO_MONTHS_RF  = {
+TRAINING_MONTHS_LSTM    = 60        # fixed rolling training window (not expanding)
+EMBARGO_MONTHS_LSTM = {
     "Monthly":      1,              # gap between training end and validation start
     "Quarterly":    3,
     "Yearly":       12,
 }                                   
-VALIDATION_MONTHS_RF    = 24        # fixed validation block ending at the rebalance date
+VALIDATION_MONTHS_LSTM  = 24        # fixed validation block ending at the rebalance date
 
-RF_FIXED = {
-    'n_estimators'     : 300,
-    'max_samples'      : 0.7,
-    'bootstrap'        : True,
-    'criterion'        : "squared_error",
+LSTM_FIXED = {
+    'epochs'           : 30,
+    'batch_size'       : 128,
+    'lr'               : 1e-3,
+    'l2'               : 1e-4,
 }
 
-RF_GRID = {
-    'max_features'      : ["sqrt", 0.33, 0.5],
-    'max_depth'         : [3, 5, 10, None],
-    'min_samples_leaf'  : [5, 10, 20, 50],
+LSTM_GRID = {
+    'units'             : [8, 16],
+    'dropout'           : [0.1, 0.3],
 }
