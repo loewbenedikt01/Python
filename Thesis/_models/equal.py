@@ -23,7 +23,7 @@ from portfolio import build_portfolio, universe_for
 # Variables
 # ----
 
-MODEL_NAME       = 'equal_weight_t_0.1'           
+MODEL_NAME       = 'equal_weight_t_20'           
 
 FREQUENCIES = [
     'Monthly',

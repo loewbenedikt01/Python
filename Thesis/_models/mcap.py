@@ -31,7 +31,7 @@ from universe import tickers as UNIVERSE
 # Variables
 # ----
 
-MODEL_NAME = "market_cap_t_0.1"          # change per run; costs live in config.py
+MODEL_NAME = "market_cap_no_t"          # change per run; costs live in config.py
 
 FREQUENCIES = [
     "Monthly", 

@@ -25,7 +25,7 @@ from portfolio import load_prices
 # Variables
 # ----
 
-MODEL_NAME = "sp500_no_trans"
+MODEL_NAME = "sp500_t_10"
 TICKER     = "^GSPC"        # download new benchmark data and run another one
 
 # ---- 

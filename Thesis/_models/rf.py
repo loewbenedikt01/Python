@@ -50,8 +50,9 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME  = "rf_t_0.1"        # change per run
+MODEL_NAME  = "rf_t_10_h"        # change per run
 TRAIN_START = "1990-01-01"
+WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
     #"Monthly",
@@ -176,15 +177,17 @@ def _fmt(sec: float) -> str:
 
 def _make_model(params: dict, seed: int) -> RandomForestRegressor:
     return RandomForestRegressor(
-        **RF_FIXED,                     # objective, n_estimators, subsample, colsample_bytree
-        **params,                       # this grid point: learning_rate, max_depth, min_child_weight, reg_lambda
-        n_jobs=1,                       # parallelism is across the grid (joblib), not within
+        **RF_FIXED,
+        **params,
+        n_jobs=1,
         random_state=seed,
     )
 
 
 def _rank_ic(y_true, y_pred, dates) -> float:
-    """Spearman(pred, realised) per date, averaged.  Dates with <3 names are skipped."""
+    """
+    Spearman(pred, realised) per date, averaged.  Dates with <3 names are skipped.
+    """
     df = pd.DataFrame({"y": np.asarray(y_true, float),
                        "p": np.asarray(y_pred, float)},
                       index=pd.Index(np.asarray(dates), name="d"))
@@ -212,11 +215,8 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
     rows and passed through as sample_weight.  All-ones -> passed as None so the
     fit is bit-identical to unweighted training.
     """
-    y_val_np  = y_val.to_numpy()
-    val_dates = y_val.index.get_level_values("date")
-    sst = float(np.sum((y_val_np - y_val_np.mean()) ** 2)) or np.nan
     sw = None
-    if month_w is not None:
+    if month_w is not None and not np.allclose(month_w.to_numpy(), 1.0):
         sw = month_w.reindex(X_tr.index.get_level_values("date")).to_numpy()
 
     models = Parallel(n_jobs=-1, backend="threading")(
@@ -224,9 +224,14 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
         for seed in BASE_SEED for p in GRID
     )
 
-    val_pred = np.mean([m.predict(X_val) for m in models], axis=0)
-    val_r2 = 1.0 - float(np.sum((y_val_np - val_pred) ** 2)) / sst
-    val_ic = _rank_ic(y_val_np, val_pred, val_dates)
+    if len(y_val):
+        y_val_np = y_val.to_numpy()
+        sst = float(np.sum((y_val_np - y_val_np.mean()) ** 2)) or np.nan
+        val_pred = np.mean([m.predict(X_val) for m in models], axis=0)
+        val_r2 = 1.0 - float(np.sum((y_val_np - val_pred) ** 2)) / sst
+        val_ic = _rank_ic(y_val_np, val_pred, y_val.index.get_level_values("date"))
+    else:
+        val_r2 = val_ic = np.nan
     importance = pd.Series(
         np.mean([m.feature_importances_ for m in models], axis=0), index=X_tr.columns
     )
@@ -234,8 +239,25 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
 
 
 def _predict(models: list[RandomForestRegressor], X) -> np.ndarray:
-    """Mean of the raw predictions over the whole ensemble."""
+    """
+    Mean of the raw predictions over the whole ensemble.
+    """
     return np.mean([m.predict(X) for m in models], axis=0)
+
+
+def train_start(frequency: str, mode: str = "holdout", seq_len: int = 1,
+                buffer: int = 2) -> str:
+    """
+    Earliest month the training pool must reach so the first rebalance at
+    START_DATE has a full window.  buffer absorbs calendar edge effects.
+    """
+    label_m = max(1, HORIZON_TRADING_DAYS[frequency] // 21)
+    if mode == "latest":
+        back = TRAINING_MONTHS_RF + label_m
+    else:
+        back = TRAINING_MONTHS_RF + EMBARGO_MONTHS_RF[frequency] + VALIDATION_MONTHS_RF
+    back += (seq_len - 1) + buffer
+    return (pd.Timestamp(START_DATE) - pd.DateOffset(months=back)).strftime("%Y-%m-%d")
 
 
 # ----
@@ -250,7 +272,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     ~20 names for every training row — so ranks match the set actually traded.
     """
     h = HORIZON_TRADING_DAYS[frequency]
-    train_firsts = _month_firsts(prices, TRAIN_START)                 # training pool
+    train_firsts = _month_firsts(prices, train_start(frequency, WINDOW_MODE))                 # training pool
     reb_firsts   = _month_firsts(prices, START_DATE)                  # investment horizon
     reb_dates = reb_firsts[reb_firsts.month.isin(REBALANCE_MONTHS[frequency])]
 
@@ -281,24 +303,28 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     # ---- pass 1: which rebalance dates will actually train?
     todo: list[tuple] = []
     for d in reb_dates:
-        val_lo   = d - pd.DateOffset(months=VALIDATION_MONTHS_RF)
-        train_hi = val_lo - pd.DateOffset(months=embargo_months)
-        train_lo = train_hi - pd.DateOffset(months=TRAINING_MONTHS_RF)
-
         keep = ((train_firsts < d)
                 & resolve.reindex(train_firsts).lt(d).to_numpy())
         if REGIME is not None:
             keep = keep & regime.reindex(train_firsts).eq(REGIME).to_numpy()
         pit = train_firsts[keep]
-        tr_months = pit[(pit >= train_lo) & (pit < train_hi)][-TRAINING_MONTHS_RF:]
-        va_months = pit[pit >= val_lo]
+
+        if WINDOW_MODE == "latest":
+            tr_months = pit[-TRAINING_MONTHS_RF]
+            va_months = pit[:0]
+        else:
+            pm          = pit.to_period("M")
+            val_lo      = d.to_period("M") - VALIDATION_MONTHS_RF
+            train_hi    = val_lo - EMBARGO_MONTHS_RF[frequency]
+            train_lo    = train_hi - TRAINING_MONTHS_RF
+            tr_months   = pit[(pm >= train_lo) & (pm < train_hi)]
+            va_months   = pit[pm >= val_lo]
+
         win_log.append((d, len(tr_months), len(va_months)))
         if len(tr_months) < min_tr:
-            reject[d] = f"train months {len(tr_months)} < {min_tr}"
-            continue
-        if len(va_months) < 6:
-            reject[d] = f"val months {len(va_months)} < 6"
-            continue
+            reject[d] = f"train months {len(tr_months)} < {min_tr}"; continue
+        if WINDOW_MODE == "holdout" and len(va_months) < 6:
+            reject[d] = f"val months {len(va_months)} < 6"; continue
         todo.append((d, tr_months, va_months))
 
     print(f"[rf] {frequency}: {len(todo)}/{len(reb_dates)} rebalance dates to fit  "
