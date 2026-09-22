@@ -23,7 +23,12 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from scipy.stats import spearmanr
-from sklearn.ensemble import RandomForestRegressor
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateu
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "_metrics"))
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -36,12 +41,12 @@ from config import (
     MIN_WEIGHT,
     MAX_WEIGHT,
     HORIZON_TRADING_DAYS,
-    TRAINING_MONTHS_RF,
-    EMBARGO_MONTHS_RF,
-    VALIDATION_MONTHS_RF,
+    TRAINING_MONTHS_LSTM,
+    EMBARGO_MONTHS_LSTM,
+    VALIDATION_MONTHS_LSTM,
     BASE_SEED,
-    RF_FIXED,
-    RF_GRID,
+    LSTM_FIXED,
+    LSTM_GRID,
 )
 from features import load_db, features_panel, feature_cache_stats
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
@@ -50,7 +55,7 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME  = "rf_t_0.1"        # change per run
+MODEL_NAME  = "lstm_t_0.1"        # change per run
 TRAIN_START = "1990-01-01"
 
 FREQUENCIES = [
@@ -157,8 +162,8 @@ def _grid() -> list[dict]:
     """
     Every combination in RF_GRID (full Cartesian product).
     """
-    keys = list(RF_GRID)
-    return [dict(zip(keys, c)) for c in itertools.product(*RF_GRID.values())]
+    keys = list(LSTM_GRID)
+    return [dict(zip(keys, c)) for c in itertools.product(*LSTM_GRID.values())]
 
 
 GRID          = _grid()
@@ -173,14 +178,42 @@ def _fmt(sec: float) -> str:
         return f"{sec // 60}m{sec % 60:02d}s"
     return f"{sec // 3600}h{(sec % 3600) // 60:02d}m"
 
+SEQ_LEN = LSTM_FIXED["seq_len"]            # 6
 
-def _make_model(params: dict, seed: int) -> RandomForestRegressor:
-    return RandomForestRegressor(
-        **RF_FIXED,                     # objective, n_estimators, subsample, colsample_bytree
-        **params,                       # this grid point: learning_rate, max_depth, min_child_weight, reg_lambda
-        n_jobs=1,                       # parallelism is across the grid (joblib), not within
-        random_state=seed,
-    )
+def _make_model(units: int, dropout_rate: float, lr: float,
+            seq_len: int, n_features: int) -> tf.keras.Model:
+    reg = regularizers.l2(LSTM_FIXED["l2"])
+    m = models.Sequential([
+        layers.Input(shape=(SEQ_LEN, n_features)),
+        layers.LSTM(units, kernel_regularizer=reg, recurrent_regularizer=reg),
+        layers.Dropout(dropout),
+        layers.Dense(max(units // 2, 4), activation="relu", kernel_regularizer=reg),
+        layers.Dense(1),
+    ])
+    m.compile(optimizer=tf.keras.optimizers.Adam(LSTM_FIXED["lr"]),
+              loss=tf.keras.losses.Huber(delta=1.0))
+    return m
+
+def _build_sequences(panel, target_months, cols):
+    dates = panel.index.get_level_values("date").unique().sort_values()
+    pos = {d: i for i, d in enumerate(dates)}
+    center = np.array([0.0 if c.endswith("_x_crisis") else 0.5 for c in cols])
+    X, keys = [], []
+    for t in target_months:
+        i = pos.get(t)
+        if i is None or i < SEQ_LEN - 1:
+            continue
+        hist = dates[i - SEQ_LEN + 1 : i + 1]
+        if (hist.to_period("M").astype(int).diff()[1:] != 1).any():
+            continue                                    # gap -> skip, never mis-space
+        frames = [panel.xs(h, level="date")[cols] for h in hist]
+        tick = sorted(set.intersection(*(set(f.index) for f in frames)))
+        X.append(np.stack([f.loc[tick].to_numpy() - center for f in frames], axis=1))
+        keys += [(t, k) for k in tick]
+    if not X:
+        return np.empty((0, SEQ_LEN, len(cols))), pd.MultiIndex.from_tuples([], names=["date", "ticker"])
+    return (np.concatenate(X).astype("float32"),
+            pd.MultiIndex.from_tuples(keys, names=["date", "ticker"]))
 
 
 def _rank_ic(y_true, y_pred, dates) -> float:

@@ -54,9 +54,9 @@ MODEL_NAME  = "xgb_t_10"        # change per run
 TRAIN_START = "1990-01-01"
 
 FREQUENCIES = [
-    "Monthly",
+    #"Monthly",
     #"Quarterly",
-    #"Yearly",
+    "Yearly",
 ]
 
 

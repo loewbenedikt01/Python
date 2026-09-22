@@ -127,6 +127,7 @@ LSTM_FIXED = {
     'batch_size'       : 128,
     'lr'               : 1e-3,
     'l2'               : 1e-4,
+    'seq_len'          : 6,
 }
 
 LSTM_GRID = {
