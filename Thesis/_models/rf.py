@@ -50,14 +50,13 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME  = "rf_t_10_h"        # change per run
-TRAIN_START = "1990-01-01"
+MODEL_NAME   = "rf_t_20_h"        # change per run
 WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
-    #"Monthly",
+    "Monthly",
     #"Quarterly",
-    "Yearly",
+    #"Yearly",
 ]
 
 
@@ -285,7 +284,6 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     min_tr = 24 if REGIME is not None else TRAINING_MONTHS_RF
     _crisis_state["on"] = False
     _regfeat_log["done"] = False
-    embargo_months = EMBARGO_MONTHS_RF[frequency]
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]
@@ -310,7 +308,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         pit = train_firsts[keep]
 
         if WINDOW_MODE == "latest":
-            tr_months = pit[-TRAINING_MONTHS_RF]
+            tr_months = pit[-TRAINING_MONTHS_RF:]
             va_months = pit[:0]
         else:
             pm          = pit.to_period("M")
@@ -350,7 +348,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 
         X_tr, y_tr = _slice(panel, panel_dates, tr_months)
         X_va, y_va = _slice(panel, panel_dates, va_months)
-        if len(y_tr) < 100 or len(y_va) < 30:
+        if len(y_tr) < 100 or (WINDOW_MODE == "holdout" and len(y_va) < 30):
             reject[d] = f"rows train {len(y_tr)} / val {len(y_va)}"
             continue
 
@@ -410,7 +408,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         print(f"[rf] {frequency}: train months {nt.min()}-{nt.max()}, "
               f"val months min/med/max {nv.min()}/{int(np.median(nv))}/{nv.max()}  "
               f"(label overlap ~{max(1, h // 21) - 1}/{max(1, h // 21)})")
-        if len(ics):
+        if len(ics) and np.isfinite(ics).any():
             print(f"[rf] {frequency}: ensemble validation IC min/med/max "
                   f"{np.nanmin(ics):+.3f}/{np.nanmedian(ics):+.3f}/{np.nanmax(ics):+.3f}")
 

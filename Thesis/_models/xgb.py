@@ -50,14 +50,13 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = "xgb_no_t_h"        # change per run
-START_INVEST = "1998-01-01"
+MODEL_NAME   = "xgb_t_20_h"        # change per run
 WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
-    #"Monthly",
+    "Monthly",
     #"Quarterly",
-    "Yearly",
+    #"Yearly",
 ]
 
 # ----
@@ -285,7 +284,6 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     min_tr = 24 if REGIME is not None else TRAINING_MONTHS_XGB
     _crisis_state["on"] = False
     _regfeat_log["done"] = False
-    embargo_months = EMBARGO_MONTHS_XGB[frequency]
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]

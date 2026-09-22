@@ -36,7 +36,7 @@ RISK_FREE_RATE          = 0.0
 # Configuration for Portfolio construction
 # ----
 MAX_HOLDINGS            = 20        # investable universe size (universe.py per year)
-TRANSACTION_COST_BPS    = 0        # charged on turnover at each rebalance [0, 10, 20], [none, realistic, conservative]
+TRANSACTION_COST_BPS    = 20        # charged on turnover at each rebalance [0, 10, 20], [none, realistic, conservative]
 MIN_WEIGHT              = 0.01      # min 1% weight allocation per stock  
 MAX_WEIGHT              = 0.10      # max 10% weight allocation per stock
 HORIZON_TRADING_DAYS = {

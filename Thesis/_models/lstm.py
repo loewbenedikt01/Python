@@ -1,9 +1,9 @@
 """
-LSTM — cross-sectional return forecast -> portfolio weights.
+Long Short Term Memory (LSTM) — cross-sectional return forecast -> portfolio weights.
 
 Walk-forward, refit at every rebalance date `d` on point-in-time data:
-  * fixed rolling window (no expansion): TRAINING_MONTHS_LSTM months of training,
-    an EMBARGO_MONTHS_LSTM gap, then a VALIDATION_MONTHS_LSTM block ending at `d`;
+  * fixed rolling window (no expansion): TRAINING_MONTHS_RF months of training,
+    an EMBARGO_MONTHS_RF gap, then a VALIDATION_MONTHS_RF block ending at `d`;
   * the feature panel is rebuilt per `d` with the cross-section pinned to
     `universe_for(d.year)` — the same ~20 names for every training row;
   * every (grid point, seed) in RF_GRID x BASE_SEED is fit — no search, no
@@ -28,7 +28,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.regularizers import l2
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateu
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "_metrics"))
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -41,6 +41,7 @@ from config import (
     MIN_WEIGHT,
     MAX_WEIGHT,
     HORIZON_TRADING_DAYS,
+    TRANSACTION_COST_BPS,
     TRAINING_MONTHS_LSTM,
     EMBARGO_MONTHS_LSTM,
     VALIDATION_MONTHS_LSTM,
@@ -55,8 +56,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME  = "lstm_t_0.1"        # change per run
-TRAIN_START = "1990-01-01"
+MODEL_NAME   = "LSTM_t_20_h"        # change per run
+WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
     #"Monthly",
@@ -74,6 +75,8 @@ regime_def.REGIME              = None     # None | "calm" | "crisis"
 regime_def.USE_REGIME_WEIGHTS  = False    # Channel 1: sample weights
 regime_def.USE_REGIME_FEATURES = True     # Channel 2: interaction features
 regime_def.USE_REGIME_THETA    = True     # Channel 3: rank sharpness
+
+USE_PCRISIS_INPUT    = True
 
 DETECTOR             = regime_def.DETECTOR
 REGIME               = regime_def.REGIME
@@ -162,8 +165,8 @@ def _grid() -> list[dict]:
     """
     Every combination in RF_GRID (full Cartesian product).
     """
-    keys = list(LSTM_GRID)
-    return [dict(zip(keys, c)) for c in itertools.product(*LSTM_GRID.values())]
+    keys = list(RF_GRID)
+    return [dict(zip(keys, c)) for c in itertools.product(*RF_GRID.values())]
 
 
 GRID          = _grid()
@@ -178,46 +181,20 @@ def _fmt(sec: float) -> str:
         return f"{sec // 60}m{sec % 60:02d}s"
     return f"{sec // 3600}h{(sec % 3600) // 60:02d}m"
 
-SEQ_LEN = LSTM_FIXED["seq_len"]            # 6
 
-def _make_model(units: int, dropout_rate: float, lr: float,
-            seq_len: int, n_features: int) -> tf.keras.Model:
-    reg = regularizers.l2(LSTM_FIXED["l2"])
-    m = models.Sequential([
-        layers.Input(shape=(SEQ_LEN, n_features)),
-        layers.LSTM(units, kernel_regularizer=reg, recurrent_regularizer=reg),
-        layers.Dropout(dropout),
-        layers.Dense(max(units // 2, 4), activation="relu", kernel_regularizer=reg),
-        layers.Dense(1),
-    ])
-    m.compile(optimizer=tf.keras.optimizers.Adam(LSTM_FIXED["lr"]),
-              loss=tf.keras.losses.Huber(delta=1.0))
-    return m
-
-def _build_sequences(panel, target_months, cols):
-    dates = panel.index.get_level_values("date").unique().sort_values()
-    pos = {d: i for i, d in enumerate(dates)}
-    center = np.array([0.0 if c.endswith("_x_crisis") else 0.5 for c in cols])
-    X, keys = [], []
-    for t in target_months:
-        i = pos.get(t)
-        if i is None or i < SEQ_LEN - 1:
-            continue
-        hist = dates[i - SEQ_LEN + 1 : i + 1]
-        if (hist.to_period("M").astype(int).diff()[1:] != 1).any():
-            continue                                    # gap -> skip, never mis-space
-        frames = [panel.xs(h, level="date")[cols] for h in hist]
-        tick = sorted(set.intersection(*(set(f.index) for f in frames)))
-        X.append(np.stack([f.loc[tick].to_numpy() - center for f in frames], axis=1))
-        keys += [(t, k) for k in tick]
-    if not X:
-        return np.empty((0, SEQ_LEN, len(cols))), pd.MultiIndex.from_tuples([], names=["date", "ticker"])
-    return (np.concatenate(X).astype("float32"),
-            pd.MultiIndex.from_tuples(keys, names=["date", "ticker"]))
+def _make_model(params: dict, seed: int) -> RandomForestRegressor:
+    return RandomForestRegressor(
+        **RF_FIXED,
+        **params,
+        n_jobs=1,
+        random_state=seed,
+    )
 
 
 def _rank_ic(y_true, y_pred, dates) -> float:
-    """Spearman(pred, realised) per date, averaged.  Dates with <3 names are skipped."""
+    """
+    Spearman(pred, realised) per date, averaged.  Dates with <3 names are skipped.
+    """
     df = pd.DataFrame({"y": np.asarray(y_true, float),
                        "p": np.asarray(y_pred, float)},
                       index=pd.Index(np.asarray(dates), name="d"))
@@ -245,11 +222,8 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
     rows and passed through as sample_weight.  All-ones -> passed as None so the
     fit is bit-identical to unweighted training.
     """
-    y_val_np  = y_val.to_numpy()
-    val_dates = y_val.index.get_level_values("date")
-    sst = float(np.sum((y_val_np - y_val_np.mean()) ** 2)) or np.nan
     sw = None
-    if month_w is not None:
+    if month_w is not None and not np.allclose(month_w.to_numpy(), 1.0):
         sw = month_w.reindex(X_tr.index.get_level_values("date")).to_numpy()
 
     models = Parallel(n_jobs=-1, backend="threading")(
@@ -257,9 +231,14 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
         for seed in BASE_SEED for p in GRID
     )
 
-    val_pred = np.mean([m.predict(X_val) for m in models], axis=0)
-    val_r2 = 1.0 - float(np.sum((y_val_np - val_pred) ** 2)) / sst
-    val_ic = _rank_ic(y_val_np, val_pred, val_dates)
+    if len(y_val):
+        y_val_np = y_val.to_numpy()
+        sst = float(np.sum((y_val_np - y_val_np.mean()) ** 2)) or np.nan
+        val_pred = np.mean([m.predict(X_val) for m in models], axis=0)
+        val_r2 = 1.0 - float(np.sum((y_val_np - val_pred) ** 2)) / sst
+        val_ic = _rank_ic(y_val_np, val_pred, y_val.index.get_level_values("date"))
+    else:
+        val_r2 = val_ic = np.nan
     importance = pd.Series(
         np.mean([m.feature_importances_ for m in models], axis=0), index=X_tr.columns
     )
@@ -267,8 +246,25 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
 
 
 def _predict(models: list[RandomForestRegressor], X) -> np.ndarray:
-    """Mean of the raw predictions over the whole ensemble."""
+    """
+    Mean of the raw predictions over the whole ensemble.
+    """
     return np.mean([m.predict(X) for m in models], axis=0)
+
+
+def train_start(frequency: str, mode: str = "holdout", seq_len: int = 1,
+                buffer: int = 2) -> str:
+    """
+    Earliest month the training pool must reach so the first rebalance at
+    START_DATE has a full window.  buffer absorbs calendar edge effects.
+    """
+    label_m = max(1, HORIZON_TRADING_DAYS[frequency] // 21)
+    if mode == "latest":
+        back = TRAINING_MONTHS_RF + label_m
+    else:
+        back = TRAINING_MONTHS_RF + EMBARGO_MONTHS_RF[frequency] + VALIDATION_MONTHS_RF
+    back += (seq_len - 1) + buffer
+    return (pd.Timestamp(START_DATE) - pd.DateOffset(months=back)).strftime("%Y-%m-%d")
 
 
 # ----
@@ -283,7 +279,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     ~20 names for every training row — so ranks match the set actually traded.
     """
     h = HORIZON_TRADING_DAYS[frequency]
-    train_firsts = _month_firsts(prices, TRAIN_START)                 # training pool
+    train_firsts = _month_firsts(prices, train_start(frequency, WINDOW_MODE))                 # training pool
     reb_firsts   = _month_firsts(prices, START_DATE)                  # investment horizon
     reb_dates = reb_firsts[reb_firsts.month.isin(REBALANCE_MONTHS[frequency])]
 
@@ -296,7 +292,6 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     min_tr = 24 if REGIME is not None else TRAINING_MONTHS_RF
     _crisis_state["on"] = False
     _regfeat_log["done"] = False
-    embargo_months = EMBARGO_MONTHS_RF[frequency]
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]
@@ -314,24 +309,28 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     # ---- pass 1: which rebalance dates will actually train?
     todo: list[tuple] = []
     for d in reb_dates:
-        val_lo   = d - pd.DateOffset(months=VALIDATION_MONTHS_RF)
-        train_hi = val_lo - pd.DateOffset(months=embargo_months)
-        train_lo = train_hi - pd.DateOffset(months=TRAINING_MONTHS_RF)
-
         keep = ((train_firsts < d)
                 & resolve.reindex(train_firsts).lt(d).to_numpy())
         if REGIME is not None:
             keep = keep & regime.reindex(train_firsts).eq(REGIME).to_numpy()
         pit = train_firsts[keep]
-        tr_months = pit[(pit >= train_lo) & (pit < train_hi)][-TRAINING_MONTHS_RF:]
-        va_months = pit[pit >= val_lo]
+
+        if WINDOW_MODE == "latest":
+            tr_months = pit[-TRAINING_MONTHS_RF:]
+            va_months = pit[:0]
+        else:
+            pm          = pit.to_period("M")
+            val_lo      = d.to_period("M") - VALIDATION_MONTHS_RF
+            train_hi    = val_lo - EMBARGO_MONTHS_RF[frequency]
+            train_lo    = train_hi - TRAINING_MONTHS_RF
+            tr_months   = pit[(pm >= train_lo) & (pm < train_hi)]
+            va_months   = pit[pm >= val_lo]
+
         win_log.append((d, len(tr_months), len(va_months)))
         if len(tr_months) < min_tr:
-            reject[d] = f"train months {len(tr_months)} < {min_tr}"
-            continue
-        if len(va_months) < 6:
-            reject[d] = f"val months {len(va_months)} < 6"
-            continue
+            reject[d] = f"train months {len(tr_months)} < {min_tr}"; continue
+        if WINDOW_MODE == "holdout" and len(va_months) < 6:
+            reject[d] = f"val months {len(va_months)} < 6"; continue
         todo.append((d, tr_months, va_months))
 
     print(f"[rf] {frequency}: {len(todo)}/{len(reb_dates)} rebalance dates to fit  "
@@ -357,7 +356,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 
         X_tr, y_tr = _slice(panel, panel_dates, tr_months)
         X_va, y_va = _slice(panel, panel_dates, va_months)
-        if len(y_tr) < 100 or len(y_va) < 30:
+        if len(y_tr) < 100 or (WINDOW_MODE == "holdout" and len(y_va) < 30):
             reject[d] = f"rows train {len(y_tr)} / val {len(y_va)}"
             continue
 
@@ -417,7 +416,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         print(f"[rf] {frequency}: train months {nt.min()}-{nt.max()}, "
               f"val months min/med/max {nv.min()}/{int(np.median(nv))}/{nv.max()}  "
               f"(label overlap ~{max(1, h // 21) - 1}/{max(1, h // 21)})")
-        if len(ics):
+        if len(ics) and np.isinfinite(ics).any():
             print(f"[rf] {frequency}: ensemble validation IC min/med/max "
                   f"{np.nanmin(ics):+.3f}/{np.nanmedian(ics):+.3f}/{np.nanmax(ics):+.3f}")
 
