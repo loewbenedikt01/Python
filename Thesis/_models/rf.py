@@ -50,12 +50,12 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = "rf_t_20_h"        # change per run
+MODEL_NAME   = "rf_no_t_h"        # change per run
 WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
-    "Monthly",
-    #"Quarterly",
+    #"Monthly",
+    "Quarterly",
     #"Yearly",
 ]
 

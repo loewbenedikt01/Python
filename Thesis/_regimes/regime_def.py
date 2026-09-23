@@ -21,6 +21,7 @@ With DETECTOR = "none" every channel collapses exactly to the un-regimed model
 import sys
 from functools import lru_cache
 from pathlib import Path
+import multiprocessing as mp
 
 import numpy as np
 import pandas as pd
@@ -40,8 +41,10 @@ REGIME   = None         # None | "calm" | "crisis"   (hard-split robustness spec
 
 @lru_cache(maxsize=None)
 def _loader(name: str):
-    """Import each detector's accessor once.  The accessor itself should cache
-    its parquet read, since regime_probs is called several times per date."""
+    """
+    Import each detector's accessor once.  The accessor itself should cache
+    its parquet read, since regime_probs is called several times per date.
+    """
     if name == "changepoint":
         from _regimes.changepoint.main import crisis_probs
         return crisis_probs
@@ -49,7 +52,9 @@ def _loader(name: str):
 
 
 def regime_probs(dates) -> pd.DataFrame:
-    """One row per date, columns ['p_calm', 'p_crisis'], summing to 1."""
+    """
+    One row per date, columns ['p_calm', 'p_crisis'], summing to 1.
+    """
     idx = pd.DatetimeIndex(dates)
     if DETECTOR == "none":
         return pd.DataFrame({"p_calm": 1.0, "p_crisis": 0.0}, index=idx)
@@ -63,7 +68,9 @@ def regime_probs(dates) -> pd.DataFrame:
 
 
 def _regime_label(dates) -> pd.Series:
-    """Hard {calm, crisis} label from p_crisis -- only for the REGIME hard-split spec."""
+    """
+    Hard {calm, crisis} label from p_crisis -- only for the REGIME hard-split spec.
+    """
     p = regime_probs(pd.DatetimeIndex(dates))["p_crisis"]
     return pd.Series(np.where(p.to_numpy() > 0.5, "crisis", "calm"),
                      index=p.index, name="regime")
@@ -75,9 +82,11 @@ REGIME_WEIGHT_FLOOR = 0.5       # w = floor + (1-floor) * similarity; keeps n_ef
 REGIME_DECAY_HL     = None      # optional half-life in months
 
 def _obs_weights(tr_months, d):
-    """Observation weight per training month: resemblance to d's expected regime.
+    """
+    Observation weight per training month: resemblance to d's expected regime.
     Near-binary p_crisis makes raw similarity near-binary too, which collapses
-    n_eff in crisis periods (~24/60); the floor keeps it near ~56/60."""
+    n_eff in crisis periods (~24/60); the floor keeps it near ~56/60.
+    """
     if not USE_REGIME_WEIGHTS:
         return None
     P      = regime_probs(tr_months.union(pd.DatetimeIndex([d])))
@@ -110,7 +119,7 @@ def _add_regime_features(panel: pd.DataFrame) -> pd.DataFrame:
     if not USE_REGIME_FEATURES:
         return panel
     if DETECTOR == "none":
-        if not _regfeat_log["done"]:
+        if not _regfeat_log["done"] and mp.current_process().name == "MainProcess":
             print("[regime] Channel 2: DETECTOR='none' -> interaction columns not "
                   "appended (stub regression test)", flush=True)
             _regfeat_log["done"] = True
@@ -132,8 +141,10 @@ ENTER_CRISIS, EXIT_CRISIS = 0.6, 0.4      # Schmitt trigger
 _crisis_state = {"on": False}
 
 def _theta(d) -> float:
-    """Rank-sharpness exponent for rebalance date d.  Stateful: call once per
-    date, in order; models reset _crisis_state at the start of each run."""
+    """
+    Rank-sharpness exponent for rebalance date d.  Stateful: call once per
+    date, in order; models reset _crisis_state at the start of each run.
+    """
     if not USE_REGIME_THETA:
         return 1.0
     p = float(regime_probs([d])["p_crisis"].iloc[0])

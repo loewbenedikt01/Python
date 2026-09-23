@@ -36,7 +36,7 @@ RISK_FREE_RATE          = 0.0
 # Configuration for Portfolio construction
 # ----
 MAX_HOLDINGS            = 20        # investable universe size (universe.py per year)
-TRANSACTION_COST_BPS    = 20        # charged on turnover at each rebalance [0, 10, 20], [none, realistic, conservative]
+TRANSACTION_COST_BPS    = 00        # charged on turnover at each rebalance [0, 10, 20], [none, realistic, conservative]
 MIN_WEIGHT              = 0.01      # min 1% weight allocation per stock  
 MAX_WEIGHT              = 0.10      # max 10% weight allocation per stock
 HORIZON_TRADING_DAYS = {
@@ -61,6 +61,12 @@ LOOKBACK_MONTHS_HRP     = 60        # 60 months lookback window for calculation
 # Configuration for XGB + RF
 # ----
 BASE_SEED               = [41, 42, 43]      # if time, increase base seeds
+
+# ----
+# Configuration for LSTM
+# ----
+
+BASE_SEED_LSTM          = [41, 42, 43, 44, 45]      # keep it larger, higher variance
 
 # ----
 # Configuration for XGB Weights Calculation
