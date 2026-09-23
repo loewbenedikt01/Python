@@ -50,7 +50,7 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = "xgb_t_20_h"        # change per run
+MODEL_NAME   = "xgb_no_t_h_test_cp_w"        # change per run
 WINDOW_MODE  = "holdout"         # "holdout" | "latest"
 
 FREQUENCIES = [
@@ -66,8 +66,8 @@ FREQUENCIES = [
 regime_def.DETECTOR            = "none"   # "none" | "hmm" | "wasserstein" | "changepoint"
 regime_def.REGIME              = None     # None | "calm" | "crisis"
 regime_def.USE_REGIME_WEIGHTS  = False    # Channel 1: sample weights
-regime_def.USE_REGIME_FEATURES = True     # Channel 2: interaction features
-regime_def.USE_REGIME_THETA    = True     # Channel 3: rank sharpness
+regime_def.USE_REGIME_FEATURES = False    # Channel 2: interaction features
+regime_def.USE_REGIME_THETA    = False    # Channel 3: rank sharpness
 
 DETECTOR             = regime_def.DETECTOR
 REGIME               = regime_def.REGIME

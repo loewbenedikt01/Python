@@ -105,7 +105,7 @@ def crisis_probs(idx: pd.DatetimeIndex) -> pd.DataFrame:
     file, so a request for a non-trading day still resolves.
     """
     if SERIES not in _CRISIS_CACHE:
-        fname = "changepoint.csv" if SERIES == "vix" else "changepoint_gspc.csv"
+        fname = "changepoint_vix.csv" if SERIES == "vix" else "changepoint_gspc.csv"
         path = Path(__file__).resolve().parent / "regimes" / fname
         df = pd.read_csv(path, index_col="date", parse_dates=["date"]).sort_index()
         _CRISIS_CACHE[SERIES] = df[["p_calm", "p_crisis"]]
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     mkt = np.log(db[("Adj Close", MKT_TICKER)]).diff().dropna()
 
     print("=== VIX (primary) ===")
-    out = build(str(HERE / "vix_changepoint.csv"), mkt, str(HERE / "regimes/changepoint.csv"))
+    out = build(str(HERE / "vix_changepoint.csv"), mkt, str(HERE / "regimes/changepoint_vix.csv"))
     validate(out)
 
     print("\n=== GSPC (robustness) ===")

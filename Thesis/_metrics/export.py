@@ -69,6 +69,8 @@ RAW_TIMESERIES = [
     'weights',
     'turnover',
     'transaction_costs',
+    'method',
+    'regime',
 ]
 
 RAW_TIMESERIES_ML = [
@@ -84,6 +86,7 @@ RAW_TIMESERIES_ML = [
     'directional_accuracy',
     'turnover',
     'transaction_costs',
+    'regime',
 ]
 
 ML_MODELS = {'xgb', 'rf', 'lstm'}
@@ -246,7 +249,7 @@ def build_report(
     Write the full raw/ + metrics/ folder tree for one model.
     """
     if ml is None:
-        ml = model_name in ML_MODELS
+        ml = model_name.split("/")[0] in ML_MODELS
     port = _to_datetime_series(portfolio_log_returns)
 
     model_dir = Path(output_root) / model_name
