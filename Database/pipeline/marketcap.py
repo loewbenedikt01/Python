@@ -234,10 +234,11 @@ def build_corporate_actions(pcon) -> pd.DataFrame:
 def clean_sec_shares(ev: pd.DataFrame) -> pd.DataFrame:
     """
     Drop glitches in a company's SEC share counts (on today's split basis):
-    counts below 10,000, counts more than 100x off the company's median, and
-    points more than 2x off the median of their
-    neighbours (cover pages tagged in thousands, etc.). The previous count
-    is then carried forward instead.
+    counts below 10,000, counts more than 100x off the company's median,
+    points more than 2x off the median of their neighbours (cover pages
+    tagged in thousands, etc.), and single counts that jump > 30 % while the
+    next count is back at the previous level. The previous count is then
+    carried forward instead.
     """
     ev = ev[ev['shares_today'] >= 1e4].sort_values(['corporate_id', 'd'])      # placeholders like 1 share (FOXA 2019)
     # orders of magnitude off the company's overall median (runs of mis-scaled values)
@@ -246,7 +247,14 @@ def clean_sec_shares(ev: pd.DataFrame) -> pd.DataFrame:
     med = ev.groupby('corporate_id')['shares_today'].transform(
         lambda s: s.rolling(5, center=True, min_periods=1).median())
     ratio = ev['shares_today'] / med
-    return ev[(ratio > 0.5) & (ratio < 2.0)]
+    ev = ev[(ratio > 0.5) & (ratio < 2.0)]
+    # a single count that jumps > 30 % while the next one is back at the previous level (within 10 %):
+    # a one-off tagging error, not a deal (WFC 2023-07-21: 3.75bn -> 1.82bn -> 3.63bn). Counts are on
+    # today's split basis, so real splits don't look like jumps.
+    prev = ev.groupby('corporate_id')['shares_today'].shift(1)
+    nxt = ev.groupby('corporate_id')['shares_today'].shift(-1)
+    blip = ((ev['shares_today'] / prev - 1).abs() > 0.3) & ((nxt / prev - 1).abs() < 0.1)
+    return ev[~blip.fillna(False)]
 
 
 def share_events(pcon) -> pd.DataFrame:
@@ -337,7 +345,7 @@ def build(pcon) -> int:
             WITH comp AS (SELECT corporate_id, primary_ticker FROM c.company_info
                           WHERE primary_ticker IS NOT NULL AND coalesce(status, 'active') = 'active'),
             px AS (
-                SELECT comp.corporate_id, p.ticker, p.date, p.close, p.fx_to_usd,
+                SELECT comp.corporate_id, p.ticker, p.date, p.close, p.fx_to_usd, p.price_suspect,
                        coalesce(u.major, upper(p.currency)) AS currency, coalesce(u.divisor, 1.0) AS divisor,
                        -- products of the factors after this date: real price = close x yahoo_after,
                        -- real shares = shares on today's split basis / split_after
@@ -358,7 +366,8 @@ def build(pcon) -> int:
                    px.currency,
                    px.close * px.yahoo_after / px.split_after * px.fx_to_usd * e.shares_today AS market_cap_usd,
                    e.src AS shares_source
-            FROM px ASOF JOIN _events e ON e.corporate_id = px.corporate_id AND px.date >= e.d""")
+            FROM px ASOF JOIN _events e ON e.corporate_id = px.corporate_id AND px.date >= e.d
+            WHERE NOT coalesce(px.price_suspect, FALSE)      -- one-day price spikes (price_checks)""")
     finally:
         pcon.unregister('_units')
         pcon.unregister('_events')
@@ -400,7 +409,9 @@ def run_checks(pcon) -> pd.DataFrame:
         FROM m
         WHERE prev_market_cap > 0 AND abs(market_cap / prev_market_cap - 1) > {JUMP_LIMIT}
           AND NOT EXISTS (SELECT 1 FROM corporate_actions ca
-                          WHERE ca.ticker = m.primary_ticker AND ca.date = m.date)""").df()
+                          WHERE ca.ticker = m.primary_ticker AND ca.date = m.date)
+          -- completed deals (8-K item 2.01) are known corporate actions too
+          AND NOT (shares_source = 'sec_after_deal' AND prev_shares_source IS DISTINCT FROM 'sec_after_deal')""").df()
     jumps = jumps.assign(check='daily_jump')
 
     out = pd.concat([shares, jumps], ignore_index=True)

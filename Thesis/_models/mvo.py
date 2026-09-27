@@ -16,10 +16,7 @@ excess return, or the solver fails) the model falls back to the
 minimum-variance portfolio under the same box.
 
 The covariance estimator is switchable in the Variables block below:
-"sample" (plain pandas covariance) or "ledoit_wolf" (shrinkage).
-
-The shared portfolio engine handles the actual rebalancing, drift between
-rebalances, turnover and costs.  Output tree: _output/mvo/.
+"sample" (plain pandas covariance) or "ledoit_wolf" (shrinkage) [used as main cov].
 
 -> Before Running: 
     Things to adjust
@@ -29,18 +26,9 @@ rebalances, turnover and costs.  Output tree: _output/mvo/.
     
     Possible Run Modes:
         DETECTOR = "none" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "hmm" + MOMENT_MODE = "mixture" + USE_REGIME = False
-        DETECTOR = "wasserstein" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "wasserstein" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "wasserstein" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "wasserstein" + MOMENT_MODE = "mixture" + USE_REGIME = False
-        DETECTOR = "changepoint" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "changepoint" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "changepoint" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "changepoint" + MOMENT_MODE = "mixture" + USE_REGIME = False
+        DETECTOR = "hmm" + MOMENT_MODE = "pooled" + USE_REGIME = True
+        DETECTOR = "wasserstein" + MOMENT_MODE = "pooled" + USE_REGIME = True
+        DETECTOR = "changepoint" + MOMENT_MODE = "pooled" + USE_REGIME = True
 """
 
 import sys

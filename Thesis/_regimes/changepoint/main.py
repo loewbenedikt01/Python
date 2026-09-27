@@ -131,9 +131,9 @@ if __name__ == "__main__":
     mkt = np.log(db[("Adj Close", MKT_TICKER)]).diff().dropna()
 
     print("=== VIX (primary) ===")
-    out = build(str(HERE / "vix_changepoint.csv"), mkt, str(HERE / "regimes/changepoint_vix.csv"))
+    out = build(str(HERE / "regimes_raw" / "vix_changepoint.csv"), mkt, str(HERE / "regimes_final/changepoint_vix.csv"))
     validate(out)
 
     print("\n=== GSPC (robustness) ===")
-    out_gspc = build(str(HERE / "gspc_changepoint.csv"), mkt, str(HERE / "regimes/changepoint_gspc.csv"))
+    out_gspc = build(str(HERE / "regimes_raw" / "gspc_changepoint.csv"), mkt, str(HERE / "regimes_final/changepoint_gspc.csv"))
     validate(out_gspc)

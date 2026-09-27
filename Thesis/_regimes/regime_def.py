@@ -36,7 +36,7 @@ if str(_ROOT) not in sys.path:                 # once, at import -- not per call
 # ----
 
 DETECTOR = "none"       # "none" | "changepoint" | "hmm" | "wasserstein"
-REGIME   = None         # None | "calm" | "crisis"   (hard-split robustness spec)
+REGIME   = None         # None | "calm" | "crisis"
 
 
 @lru_cache(maxsize=None)

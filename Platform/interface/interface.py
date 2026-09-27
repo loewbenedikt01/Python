@@ -111,6 +111,7 @@ def load_database(folder: str) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, st
             WHERE NOT coalesce(i.is_helper, FALSE)                 -- FX pairs added only for USD conversion
               AND coalesce(i.status, 'active') <> 'removed'
               AND NOT ends_with(i.ticker, '_FRED')                -- FRED copies of the yield indices
+              AND NOT coalesce(p.price_suspect, FALSE)            -- one-day price spikes (Yahoo glitches)
               AND p.close IS NOT NULL""").df()
         names = dict(con.execute("SELECT ticker, name FROM instruments WHERE name IS NOT NULL").fetchall())
         status = [_last_runs(con, "prices.duckdb")]

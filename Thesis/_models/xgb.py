@@ -11,7 +11,17 @@ Walk-forward, refit at every rebalance date `d` on point-in-time data:
     then ranked cross-sectionally and mapped to weights via the config weight
     box.  The validation block only reports ensemble val R^2 / rank IC.
 
-Reported specification count is 1 (the ensemble).  Output tree: _output/xgb/.
+-> Before Running: 
+    Things to adjust
+        TRANSACTION_COST_BPS    
+            [0 | 10 | 20]
+    Do not run each Mode with different Transaction costs. Calculate the Transaction costs impact across a small mode and then further document.
+    
+    Possible Run Modes:
+        DETECTOR = "none" + REGIME_WEIGHTS = False + REGIME_FEATURES = False + REGIME_THETA = False
+        DETECTOR = "hmm" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
+        DETECTOR = "wasserstein" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
+        DETECTOR = "changepoint" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
 """
 
 import itertools

@@ -5,8 +5,8 @@ import pyarrow.parquet as pq
 
 # Define paths
 BASE_DIR = Path(__file__).resolve().parents[2] / "_database"
-DATABASE_PATH = BASE_DIR / "database.parquet"
-OUTPUT_PATH = BASE_DIR / "changepoint.parquet"
+DATABASE_PATH = BASE_DIR / "regimes_raw" / "database.parquet"
+OUTPUT_PATH = BASE_DIR / "regimes_raw" / "changepoint.parquet"
 
 
 def process_and_save_log_returns(

@@ -24,7 +24,7 @@ import pandas as pd
 import yfinance as yf
 
 import config
-from pipeline import common, fx
+from pipeline import common, fx, price_checks
 
 
 log = common.get_logger('pipeline.prices')
@@ -137,9 +137,11 @@ def run(ctx: common.RunContext) -> common.StepResult:
         for start, grp in existing.groupby('start'):
             tickers = grp['ticker'].tolist()
             new = download(tickers, start)
+            # corrected rows (price_checks) differ from Yahoo on purpose: not a reason for a reload
             stored = pcon.execute("""
                 SELECT ticker, date, adj_close FROM prices_daily
-                WHERE ticker IN (SELECT unnest(?)) AND date >= ?""", [tickers, start]).df()
+                WHERE ticker IN (SELECT unnest(?)) AND date >= ? AND NOT coalesce(price_corrected, FALSE)""",
+                [tickers, start]).df()
             for t in tickers:
                 if t not in new:
                     continue
@@ -192,9 +194,13 @@ def run(ctx: common.RunContext) -> common.StepResult:
                   FROM prices_daily GROUP BY ticker) p
             WHERE i.ticker = p.ticker""")
 
+        # price glitches (unit switches, one-day spikes), before the USD columns are computed
+        checks = price_checks.apply(pcon)
+
         # FX rates + USD columns
         fx.update(pcon, pairs)
-        result.message = f'{len(full_reload)} full reloads'
+        result.message = (f"{len(full_reload)} full reloads; {checks['unit_fixed']} unit fixes, "
+                          f"{checks['suspect']} suspect days")
     finally:
         pcon.close()
     return result

@@ -325,6 +325,9 @@ ALTER TABLE macro_series ADD COLUMN IF NOT EXISTS category VARCHAR;             
 ALTER TABLE macro_series ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'active';  -- active / no_data
 ALTER TABLE macro_series ADD COLUMN IF NOT EXISTS consecutive_failures INTEGER DEFAULT 0;
 ALTER TABLE macro_series ADD COLUMN IF NOT EXISTS last_checked DATE;
+-- price glitches (pipeline/price_checks.py): unit switch GBp <-> GBP corrected / one-day spike (rows kept)
+ALTER TABLE prices_daily ADD COLUMN IF NOT EXISTS price_corrected BOOLEAN DEFAULT FALSE;
+ALTER TABLE prices_daily ADD COLUMN IF NOT EXISTS price_suspect BOOLEAN DEFAULT FALSE;
 """
 
 COMPANIES_MIGRATIONS = """

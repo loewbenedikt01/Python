@@ -76,6 +76,22 @@ at the end of each section. Keep adding to it.
 - No USD conversion for values that are not money: yields (^IRX ^FVX ^TNX ^TYX and the `_FRED` copies),
   volatility indices (name contains "Volatility Index"), ^SKEW, ^NYHL (`NO_USD_*` in config).
 
+### Price glitches (`price_corrected`, `price_suspect`; `pipeline/price_checks.py`, run by the prices step)
+
+- **Unit switches, GBp / GBX tickers:** a day-to-day jump of ~100x or ~1/100x (+-10 %) is a switch between
+  pence and pounds. The stretch in the wrong unit is scaled to the unit of the latest data (OHLC and
+  adj_close), `price_corrected = TRUE` (kept on later runs). None in the data today; a safeguard.
+- **One-day spikes:** a move of more than 30 % that comes back within 1-3 trading days (within 15 % of the
+  level before; the days in between stay > 30 % away) -> `price_suspect = TRUE` on the spike days. Rows are
+  kept, but left out of `market_cap_daily` and the dashboard. Recomputed on every run.
+  - Only equities, ETFs, sectors and indices, and **not for US listings**: all 21 US cases were real
+    (C / BAC 2009-01-21, AIG / RF / HBAN 2008-09, BIIB 2020-11-04 aducanumab). Not for volatility indices,
+    yields, commodities or crypto either, where such moves happen.
+  - 406 days in 63 tickers: e.g. ULVR.L x51 and back (1995), a zero-volume 4,793p row among ~1,460p
+    (1999-05-03), TATASTEEL.NS x10.5, NOVO-B.CO x2, ^J203.JO 99,324 -> 179.8 -> 99,971, and CHIF (a
+    sector ETF priced at $0.02-0.05, 154 days).
+- The adj_close change check of the prices step ignores corrected rows (no reload loop).
+
 ## FX (`fx_rates_daily`)
 
 - FX direction comes from the Yahoo ticker: `EURUSD=X` = USD per EUR, `JPY=X` / `USDJPY=X` = JPY per USD.
@@ -217,8 +233,10 @@ at the end of each section. Keep adding to it.
   on 2026-05-07; the next cover page was 2026-07-22).
 - **Glitches in SEC counts are dropped** (the previous count carries on): counts below 10,000 (FOXA's
   1-share placeholder from before its listing), counts more than 100x off the company's median, points
-  more than 2x off the median of their 5 neighbours (cover pages tagged in thousands). Real jumps such as
-  AIG 2011 (x13, recapitalisation) or mergers stay.
+  more than 2x off the median of their 5 neighbours (cover pages tagged in thousands), and a single count
+  that jumps > 30 % while the next one is back within 10 % of the previous (WFC 2023-07-21: 3.75bn ->
+  1.82bn -> 3.63bn). Real jumps such as AIG 2011 (x13, recapitalisation) or mergers stay.
+- Days with `price_suspect` (one-day price spikes) are left out of `market_cap_daily`.
 - **Shares, everyone else:** yfinance `impliedSharesOutstanding` (all share classes, e.g. BYD H + A shares),
   falling back to `sharesOutstanding`; current value only, applied to the whole price history
   (`shares_source = 'yfinance_current'`). Refreshed with company_info.
@@ -259,10 +277,11 @@ at the end of each section. Keep adding to it.
   - `shares_vs_yfinance`: latest share count more than 20 % off yfinance's (BX: Yahoo also counts
     partnership units).
   - `daily_jump`: market cap changes by more than 30 % from one trading day to the next, except on days with
-    a corporate action of the primary ticker. `driver` = `price` (share count unchanged: crash, spike or a
-    Yahoo price glitch) or `shares` (share count changed: merger, wrong or restated SEC count). First run:
-    1,224 days (1,135 price, 89 shares), mostly 1998-2003, 2008, 2020 and a few non-US tickers with price
-    glitches (NOVO-B.CO, ULVR.L, FMG.AX, Indian stocks).
+    a corporate action: a split / spin-off of the primary ticker, or a completed deal (8-K item 2.01, the
+    `sec_after_deal` date). `driver` = `price` (share count unchanged) or `shares` (share count changed).
+    First run 1,224 days; after the price-glitch flags, the share-count blip rule and the deal exclusion:
+    806 (US: 372 price, mostly real crashes 1998-2003 / 2008-10 / 2020, and 16 share-count jumps; non-US:
+    418 price, e.g. FMG.AX month-end prints in the 1990s).
 
 ## Running, locks and backups
 

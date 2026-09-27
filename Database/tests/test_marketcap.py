@@ -275,3 +275,15 @@ def test_daily_jump_check_skips_corporate_actions(tmp_path, monkeypatch):
     jumps = out[out['check'] == 'daily_jump']
     assert sorted(jumps['date'].astype(str)) == ['2020-05-06', '2020-05-07']          # up and back down
     assert set(jumps['driver']) == {'price'}
+
+
+def test_one_off_share_count_blip_is_dropped():
+    import pandas as pd
+    ev = pd.DataFrame({'corporate_id': [1] * 4 + [2] * 3,
+                       'd': pd.to_datetime(['2023-02-10', '2023-04-21', '2023-07-21', '2023-10-20',
+                                            '2020-01-01', '2020-04-01', '2020-07-01']),
+                       'shares_today': [3.79e9, 3.75e9, 1.82e9, 3.63e9,          # WFC: blip, back next quarter
+                                        1.0e9, 1.4e9, 1.41e9]})                  # merger: stays up
+    out = marketcap.clean_sec_shares(ev)
+    assert list(out.loc[out['corporate_id'] == 1, 'shares_today']) == [3.79e9, 3.75e9, 3.63e9]
+    assert len(out[out['corporate_id'] == 2]) == 3
