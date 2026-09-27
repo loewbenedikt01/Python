@@ -267,8 +267,45 @@ ALPACA_FEEDS            = ['sip', 'iex']    # tried in this order
 # CLINICAL TRIALS
 # ----
 
-TRIAL_SPONSORS = []                         # e.g. ['Eli Lilly and Company']
+TRIAL_SPONSORS = []                         # extra sponsor searches, e.g. ['Eli Lilly and Company']
 TRIAL_NCT_IDS  = []                         # e.g. ['NCT01234567']
+TRIAL_SECTORS  = ['Healthcare']             # companies whose trials are searched (company_info.sector)
+TRIAL_MAX_TRIALS = 10_000                   # at most this many trials stored (new searches share the budget)
+# primary ticker -> sponsor search texts (query.spons), replacing the company name, where trials are
+# registered under another name. Also used to match sponsors to the company.
+TRIAL_SPONSOR_ALIASES = {
+    'MRK':   ['Merck Sharp & Dohme'],                 # Merck & Co. files as MSD; 'Merck' alone finds Merck KGaA too
+    'MRK.DE': ['Merck KGaA', 'EMD Serono'],
+    'MRNA':  ['ModernaTX'],
+    'JNJ':   ['Johnson & Johnson', 'Janssen'],
+    'AZN.L': ['AstraZeneca', 'MedImmune', 'Alexion'],
+    'PFE':   ['Pfizer', 'Seagen', 'Wyeth'],
+    'SAN.PA': ['Sanofi', 'Genzyme'],
+    'BMY':   ['Bristol-Myers Squibb', 'Celgene'],
+    'ABBV':  ['AbbVie', 'Allergan'],
+    'GSK.L': ['GlaxoSmithKline', 'GSK', 'ViiV Healthcare'],
+    '4578.T': ['Otsuka'],                             # yfinance name 'Ootsuka Holdings'
+    'PHIA.AS': ['Philips'],
+    '6160.HK': ['BeiGene', 'BeOne'],
+    'CSL.AX': ['CSL Behring', 'Seqirus'],
+    'COO':   ['CooperVision', 'CooperSurgical'],      # 'Cooper' alone is too broad
+    'ORNBV.HE': ['Orion Corporation', 'Orion Pharma'],
+    'WAT':   ['Waters Corporation'],
+    'SUNPHARMA.NS': ['Sun Pharmaceutical', 'Sun Pharma'],
+    'SHL.DE': ['Siemens Healthineers', 'Siemens Healthcare'],
+    'GEHC':  ['GE Healthcare'],
+    'FRE.DE': ['Fresenius Kabi'],
+    '1177.HK': ['Sino Biopharmaceutical', 'Chia Tai Tianqing'],
+    '207940.KS': ['Samsung Biologics', 'Samsung Bioepis'],
+    '4502.T': ['Takeda'],                             # sponsor name is just 'Takeda' / 'Takeda Development ...'
+}
+# primary ticker -> extra sponsor names for matching only (not searched)
+TRIAL_SPONSOR_MATCH = {
+    'MRK.DE': ['Merck KGaA, Darmstadt, Germany'],
+    'GILD':  ['Kite, A Gilead Company'],
+    'UCB.BR': ['UCB Biopharma', 'UCB Pharma'],
+    '1093.HK': ['CSPC'],                             # 'CSPC Ouyi / ZhongQi / Zhongnuo Pharmaceutical ...'
+}
 
 
 # ----

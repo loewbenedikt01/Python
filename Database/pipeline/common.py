@@ -219,6 +219,7 @@ def connect(db: str, read_only: bool = False) -> duckdb.DuckDBPyConnection:
     path = DATABASES[db]
     path.parent.mkdir(parents=True, exist_ok=True)
     con = with_lock_retry(lambda: duckdb.connect(str(path), read_only=read_only), path.name)
+    con.execute('SET enable_progress_bar = false')          # keeps the (daily) logs readable
     if not read_only:
         schema.create(con, db)
     return con

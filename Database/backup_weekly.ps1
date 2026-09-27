@@ -11,6 +11,16 @@ $dest = Join-Path $env:USERPROFILE 'Backups\database_weekly'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 $stamp = Get-Date -Format 'yyyy-MM-dd'
 
+# clinical-trial versions (append-only Parquet files; raw.duckdb only holds a view over them):
+# mirrored, new files are added, nothing is deleted
+$trials = Join-Path $data 'trials\versions'
+if (Test-Path $trials) {
+    $tdest = Join-Path $dest 'trials_versions'
+    robocopy $trials $tdest *.parquet /E /XO /NFL /NDL /NJH /NJS /NP | Out-Null
+    $n = (Get-ChildItem $tdest -Filter *.parquet).Count
+    Write-Output ("backup: trials\versions -> {0} ({1} files)" -f $tdest, $n)
+}
+
 foreach ($file in @('raw.duckdb', 'corporate_ids.csv')) {
     $src = Join-Path $data $file
     if (-not (Test-Path $src)) { Write-Output "backup: $file not found, skipped"; continue }

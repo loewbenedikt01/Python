@@ -449,19 +449,48 @@ at the end of each section. Keep adding to it.
   (`pre` / `regular` / `post`), e.g. for earnings reactions (most earnings are released before the open or
   after the close). The resampled 5m / 10m / 1h bars would stay regular-session only.
 
-## Clinical trials (`raw.duckdb` `clinical_trials_raw`)
+## Clinical trials
 
-- Source: ClinicalTrials.gov API v2, no key. Trials: the stored ones + `config.TRIAL_NCT_IDS` + the trials of
-  `config.TRIAL_SPONSORS` (lead sponsor) + `run.py trials --nct NCT...`. Both config lists stay empty for now.
-- One row per trial and version, PK (nct_id, version). `last_change_date` =
-  `protocolSection.statusModule.lastUpdatePostDateStruct.date` ('YYYY-MM' -> first of the month).
-- **Change = different content hash**: sha256 of the normalised JSON (sorted keys, no whitespace), so identical
-  content never counts as a change. `derivedSection.miscInfoModule.versionHolder` is left out of the hash: it is
-  the date of the ClinicalTrials.gov snapshot and changes every day for every trial. It stays in `raw_json`.
-- A new version keeps all old ones; `is_latest` moves to it, `change_flag = TRUE`, `changed_sections` = the
-  modules that differ (`statusModule`, `designModule`, ...; `hasResults` for the top-level flag; a new
-  `resultsSection` lists its modules). Version 1: `change_flag = FALSE`, `changed_sections = []`.
-- Incremental: stored trials and known sponsors are only requested with lastUpdatePostDate on or after the
-  latest stored `last_change_date` (inclusive, the hash drops re-downloads without changes). New NCT IDs and new
-  sponsors are requested in full. MeSH terms in `derivedSection` (conditionBrowseModule, interventionBrowseModule)
-  are maintained by the NLM and can change without the sponsor updating the trial; they count as changes.
+- Source: ClinicalTrials.gov API v2, no key.
+- **Storage: Parquet, not a DuckDB table.** Every version is appended to `data/trials/versions/<run>.parquet`
+  (zstd). DuckDB doesn't compress long JSON strings (1,594 trials: 87 MB JSON -> 173 MB table, 8.7 MB Parquet;
+  ~100k trials would be ~10 GB). `raw.duckdb` `clinical_trials_raw` is a **view** over the files with the
+  specified columns (nct_id, raw_json, last_change_date, version, downloaded_at, json_hash, is_latest,
+  change_flag, changed_sections); `is_latest` is computed. The weekly backup mirrors the Parquet files.
+- **Which trials:** the stored ones, `config.TRIAL_NCT_IDS`, `run.py trials --nct NCT...`, and the trials of the
+  **healthcare companies** (`TRIAL_SECTORS`, 128 companies), searched by sponsor / collaborator text
+  (`query.spons`) with the company name without its legal form, or `TRIAL_SPONSOR_ALIASES` where trials are
+  filed under another name (Merck Sharp & Dohme, ModernaTX, Janssen, Otsuka, Takeda, ...).
+- **At most `TRIAL_MAX_TRIALS` (10,000) trials for now.** The searches found 69,585 trials; the budget is shared
+  (small searches get all their trials, large ones share the rest equally), newest start date first. First
+  load: 9,640 trials in 5.5 minutes (34 MB). Searches that got all their trials (`trial_searches.complete`)
+  are then updated incrementally; the others continue when budget is left (raise the limit).
+- One row per trial and version. `last_change_date` = `protocolSection.statusModule.lastUpdatePostDateStruct.date`
+  ('YYYY-MM' -> first of the month).
+- **Change = different content hash**: sha256 of the normalised JSON (sorted keys), so identical content never
+  counts as a change. `derivedSection.miscInfoModule.versionHolder` (the date of the ClinicalTrials.gov snapshot,
+  changes every day) is left out of the hash; it stays in `raw_json`. A new version keeps the old ones,
+  `change_flag = TRUE`, `changed_sections` = the modules that differ. Version 1: `change_flag = FALSE`.
+- Incremental: stored trials and completed searches only request trials with lastUpdatePostDate on or after the
+  latest stored `last_change_date`. MeSH terms in `derivedSection` are maintained by the NLM and can change
+  without the sponsor updating the trial; they count as changes.
+- **`companies.duckdb` `clinical_trials`** (one row per trial, from the latest version) and
+  **`clinical_trial_sponsors`** (lead sponsor and every collaborator, one row each, with the matched
+  `corporate_id`; **a trial counts for every matched company**). Rebuilt on every run.
+- **Phases:** `phase_groups` = the phases 1-4 a trial counts in. **Phase 1/2 counts in 1 and 2**, Phase 2/3 in
+  2 and 3, Early Phase 1 in 1; trials without a phase (N/A: devices, observational) in none. So the phase
+  segments of a year can add up to more than the number of trials.
+- **Year:** `start_year` = year of the start date (actual or planned), else of the first-posted date.
+- **Sponsor -> company matching** on the normalised name (lower case, no accents / punctuation / legal forms):
+  1. exact: `TRIAL_SPONSOR_ALIASES` / `TRIAL_SPONSOR_MATCH`, the company name, a US company's Exhibit 21
+     subsidiary names (latest year);
+  2. `parent`: the parent named in the sponsor name ("Genzyme, a Sanofi Company", "Wyeth is now a wholly owned
+     subsidiary of Pfizer", "... an affiliate of Merck KGaA, Darmstadt, Germany");
+  3. `name_prefix`: the company name followed by more words ("Novartis Pharmaceuticals", "Stryker
+     Orthopaedics"), only for company sponsors (class INDUSTRY / UNKNOWN), never for foundations (the Novo
+     Nordisk Foundation is not Novo Nordisk).
+  Names that fit several companies stay unmatched (`ambiguous`; 'Merck' alone). An alias that equals another
+  company's name is not used for matching. First build: 17,183 sponsor rows, 10,365 matched to 112 companies
+  (name 3,928, alias 3,202, prefix 2,080, parent 600, subsidiary 555). Unmatched industry sponsors with their
+  trial counts -> `data/review/trial_sponsors_unmatched.csv` (mostly companies outside the universe: Roche /
+  Genentech, BioNTech, Parexel); add an alias to match one.

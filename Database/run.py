@@ -85,7 +85,11 @@ def print_status() -> None:
         con = duckdb.connect(str(path), read_only=True)
         try:
             for table, (date_col, step) in tables.items():
-                n, latest = con.execute(f'SELECT count(*), max({date_col}) FROM {table}').fetchone()
+                try:
+                    n, latest = con.execute(f'SELECT count(*), max({date_col}) FROM {table}').fetchone()
+                except (duckdb.CatalogException, duckdb.IOException):      # view not created yet / no files
+                    rows.append((path.name, table, None, '(not created yet)', None, None))
+                    continue
                 # the step's run is logged in its own database (executives writes to companies and raw)
                 log_db = schema.STEP_DB[step]
                 lcon = con if log_db == db else duckdb.connect(str(common.DATABASES[log_db]), read_only=True)

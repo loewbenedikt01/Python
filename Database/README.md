@@ -41,7 +41,8 @@ a summary table is printed. Logs: `data/logs/`.
 **Daily run:** Windows Task Scheduler task `MarketDataPipeline` runs `run_daily.bat` Monday-Saturday at
 23:30 (output: `data/logs/daily_<date>_<time>.log`). If the computer was off, it runs as soon as possible
 afterwards. Only while you are logged on. On Saturdays `backup_weekly.ps1` then copies `raw.duckdb` and
-`corporate_ids.csv` to `~/Backups/database_weekly/` (last 8 kept). Definition: `run_daily_task.xml`; re-register with
+`corporate_ids.csv` to `~/Backups/database_weekly/` (last 8 kept) and mirrors the trial versions
+(`data/trials/versions/`). Definition: `run_daily_task.xml`; re-register with
 `schtasks /Create /TN "MarketDataPipeline" /XML "run_daily_task.xml" /F`, remove with
 `schtasks /Delete /TN "MarketDataPipeline"`.
 
@@ -60,7 +61,7 @@ afterwards. Only while you are logged on. On Saturdays `backup_weekly.ps1` then 
 | `executives` | executives per fiscal year, insider transactions | `fundamentals_yearly`, `insider_transactions_raw` |
 | `subsidiaries` | Exhibit 21 subsidiaries per fiscal year | `fundamentals_yearly` |
 | `intraday` | Alpaca 1-minute bars, resampled to 5m / 10m / 1h | `data/intraday/`, `intraday_state` |
-| `trials` | ClinicalTrials.gov, versioned | `clinical_trials_raw` |
+| `trials` | ClinicalTrials.gov trials of the healthcare companies (max 10k), versioned; sponsors matched to companies | `data/trials/versions/`, `clinical_trials`, `clinical_trial_sponsors` |
 
 ## Data
 
@@ -69,9 +70,12 @@ data/
   prices.duckdb        instruments, prices_daily, fx_rates_daily, macro_series, macro_observations,
                        market_cap_daily, corporate_actions, intraday_state, load_log
   companies.duckdb     company_info, fundamentals_quarterly, fundamentals_yearly, sec_filings,
-                       processed_datasets, fundamentals_state, load_log
-  raw.duckdb           clinical_trials_raw, insider_transactions_raw, load_log
+                       processed_datasets, fundamentals_state, clinical_trials, clinical_trial_sponsors,
+                       load_log
+  raw.duckdb           clinical_trials_raw (view over data/trials/versions/), trial_searches,
+                       insider_transactions_raw, load_log
   intraday/<1m|5m|10m|1h>/ticker=<T>/<year>.parquet
+  trials/versions/     every clinical-trial version as Parquet (append-only; can't be downloaded again)
   corporate_ids.csv    source of truth for corporate_id (never renumbered)
   cache/               downloaded SEC / 13F / Form 3-4-5 data sets (safe to delete, re-downloaded)
   review/              csv files to check by hand (see below)
@@ -105,9 +109,21 @@ close right away (like the Streamlit app); if a run finds a database locked, it 
 - Holders / executives: only SEC bulk data sets not processed yet (cached in `data/cache/`).
 - Intraday: from each ticker's last stored minute; full reload after a real split.
 - Clinical trials: only trials changed since the latest `last_change_date`; a changed trial gets a new
-  version, old versions are kept.
+  version, old versions are kept. New trials only while below `TRIAL_MAX_TRIALS`.
 - Company info: refreshed after 30 days. Market cap: rebuilt completely (seconds).
 - All writes are upserts on the primary key, so re-running never creates duplicates.
+
+## Dashboard
+
+`Platform/interface/interface.py` (Streamlit) reads these databases read-only:
+
+```bash
+streamlit run ../Platform/interface/interface.py
+```
+
+Two pages: **Markets** (all instruments, movers, charts, compare) and **Company** (header with price and market
+cap; tabs Overview, Financials, Holders, Executives, Subsidiaries, Calendar, Clinical Trials). Click an equity on
+the Markets page to open its company page, or open `/company?company=AAPL`. Queries: `company_data.py`.
 
 ## Maintenance
 
@@ -126,6 +142,7 @@ close right away (like the Streamlit app); if a run finds a database locked, it 
 | `holders_checks.csv`, `holders_matching.csv` | 13F ownership < 5 % or > 110 %, how each company was matched |
 | `intraday_checks.csv` | intraday high / low > 2 % off daily, or volume ratio > 15 % off the ticker's median |
 | `subsidiaries_unparsed.csv` | Exhibit 21 documents that couldn't be read |
+| `trial_sponsors_unmatched.csv` | industry trial sponsors not matched to a company, by trial count (add an alias in `TRIAL_SPONSOR_ALIASES` / `_MATCH`) |
 | `ticker_name_check.csv`, `name_groups.csv`, `sec_matches.csv` | ticker / name / SEC CIK mismatches |
 
 - Overrides in `config.py`: `SEC_CIK_OVERRIDES`, `PRIMARY_TICKER_OVERRIDES`, `CUSIP_OVERRIDES`,

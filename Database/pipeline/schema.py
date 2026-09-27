@@ -184,6 +184,40 @@ _PERIOD_COLS = """
     currency              VARCHAR,"""
 
 COMPANIES = f"""
+-- clinical trials (trials step, rebuilt from the latest versions): one row per trial
+CREATE TABLE IF NOT EXISTS clinical_trials (
+    nct_id                   VARCHAR PRIMARY KEY,
+    version                  INTEGER,
+    title                    VARCHAR,
+    overall_status           VARCHAR,          -- RECRUITING / COMPLETED / ...
+    study_type               VARCHAR,          -- INTERVENTIONAL / OBSERVATIONAL / ...
+    phases                   VARCHAR[],        -- as filed: ['PHASE1', 'PHASE2'], ['NA']
+    phase_groups             INTEGER[],        -- phases 1-4 it counts in: Phase 1/2 -> [1, 2], Early Phase 1 -> [1]
+    start_date               DATE,
+    start_date_type          VARCHAR,          -- ACTUAL / ESTIMATED
+    start_year               INTEGER,          -- start date, else first posted
+    primary_completion_date  DATE,
+    completion_date          DATE,
+    first_posted             DATE,
+    last_change_date         DATE,
+    enrollment               INTEGER,
+    conditions               VARCHAR[],
+    interventions            VARCHAR[],
+    has_results              BOOLEAN,
+    lead_sponsor             VARCHAR
+);
+
+-- lead sponsor and collaborators per trial, matched to companies (a trial counts for each)
+CREATE TABLE IF NOT EXISTS clinical_trial_sponsors (
+    nct_id          VARCHAR NOT NULL,
+    sponsor_name    VARCHAR NOT NULL,
+    role            VARCHAR,                   -- lead / collaborator
+    sponsor_class   VARCHAR,                   -- INDUSTRY / NIH / OTHER / ...
+    corporate_id    INTEGER,                   -- NULL: not one of our companies
+    match_method    VARCHAR,                   -- alias / name / subsidiary / name_prefix / ambiguous
+    PRIMARY KEY (nct_id, sponsor_name)
+);
+
 CREATE TABLE IF NOT EXISTS company_info (
     corporate_id          INTEGER PRIMARY KEY,
     primary_ticker        VARCHAR,
@@ -272,18 +306,20 @@ CREATE TABLE IF NOT EXISTS processed_datasets (
 # ----
 
 RAW = """
-CREATE TABLE IF NOT EXISTS clinical_trials_raw (
-    nct_id            VARCHAR NOT NULL,
-    raw_json          JSON,
-    last_change_date  DATE,
-    version           INTEGER NOT NULL,
-    downloaded_at     TIMESTAMP,
-    json_hash         VARCHAR,
-    is_latest         BOOLEAN,
-    change_flag       BOOLEAN,
-    changed_sections  VARCHAR[],
-    PRIMARY KEY (nct_id, version)
+-- clinical_trials_raw is a VIEW over data/trials/versions/*.parquet (pipeline/trials.py: ensure_view),
+-- columns nct_id, raw_json, last_change_date, version, downloaded_at, json_hash, is_latest, change_flag,
+-- changed_sections
+
+-- ClinicalTrials.gov sponsor searches of the trials step (budget TRIAL_MAX_TRIALS)
+CREATE TABLE IF NOT EXISTS trial_searches (
+    term        VARCHAR PRIMARY KEY,      -- query.spons text
+    ticker      VARCHAR,                  -- primary ticker of the company it was searched for
+    n_total     INTEGER,                  -- trials found on ClinicalTrials.gov
+    complete    BOOLEAN,                  -- all of them downloaded (then only incremental updates)
+    last_run    TIMESTAMP
 );
+-- trials fetched so far (newest start first): an incomplete search continues after them
+ALTER TABLE trial_searches ADD COLUMN IF NOT EXISTS n_fetched INTEGER;
 
 -- SEC Forms 3 / 4 / 5: non-derivative transactions of the covered US companies,
 -- one row per transaction and reporting owner (joint filings have several owners)
@@ -411,9 +447,11 @@ TABLE_INFO = {
         'fundamentals_yearly':    ('period_end', 'fundamentals'),
         'sec_filings':            ('filed_date', 'fundamentals'),
         'processed_datasets':     ('processed_at', 'holders'),
+        'clinical_trials':        ('start_date', 'trials'),
     },
     'raw': {
-        'clinical_trials_raw': ('last_change_date', 'trials'),
+        'clinical_trials_raw': ('last_change_date', 'trials'),       # view over data/trials/versions/
+        'trial_searches':      ('last_run', 'trials'),
         'insider_transactions_raw': ('trans_date', 'executives'),
     },
 }
