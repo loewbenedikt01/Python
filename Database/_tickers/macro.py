@@ -14,7 +14,7 @@ ticker_macro = {
     'NONBORRES': 'Non-Borrowed Reserves of Depository Institutions',
     'RRPONTSYD': 'Overnight Reverse Repurchase Agreements',
     'VIXCLS': 'CBOE Volatility Index (FRED Close)',
-    'COMPAPER3M': '3-Month Commercial Paper Rate',
+    'DCPN3M': '90-Day AA Nonfinancial Commercial Paper Rate',
     'DFEDTARU': 'Federal Funds Target Range Upper Limit',
 
     # === II. INFLATION & PRICE INDEX PRESSURES ===
@@ -45,7 +45,7 @@ ticker_macro = {
     'CIVPART': 'Labor Force Participation Rate',
     'EMRATIO': 'Employment-Population Ratio',
     'U6RATE': 'Total Underemployment Rate',
-    'AWHAREMAN': 'Average Weekly Hours: Manufacturing',
+    'AWHMAN': 'Average Weekly Hours: Manufacturing (Production Employees)',
     'CES0500000003': 'Average Hourly Earnings: Private Industry',
     'MANEMP': 'Manufacturing Sector Employment',
     'USGOOD': 'All Goods-Producing Employees',
@@ -64,9 +64,9 @@ ticker_macro = {
     'PCEND': 'Personal Consumption Expenditures: Nondurable Goods',
     'PCES': 'Personal Consumption Expenditures: Services',
     'DSPI': 'Disposable Personal Income',
-    'A067RX1A020SBEA': 'Real Disposable Personal Income',
+    'DSPIC96': 'Real Disposable Personal Income',
     'A939RX0Q048SBEA': 'Real GDP Per Capita',
-    'IPBUSED': 'Industrial Production: Business Equipment',
+    'IPBUSEQ': 'Industrial Production: Business Equipment',
 
     # === V. YIELD CURVE SPREADS & FIXED INCOME MATURITIES ===
     'T10Y2Y': '10-Year Treasury Minus 2-Year Treasury',
@@ -76,10 +76,9 @@ ticker_macro = {
     'DGS1': '1-Year Treasury Constant Maturity Yield',
     'DGS5': '5-Year Treasury Constant Maturity Yield',
     'DGS30': '30-Year Treasury Constant Maturity Yield',
-    'DGS3M': '3-Month Treasury Constant Maturity Yield',
+    'DGS3MO': '3-Month Treasury Constant Maturity Yield',
     'BAMLH0A0HYM2': 'ICE BofA U.S. High Yield Option-Adjusted Spread',
     'BAMLC0A4CBBB': 'ICE BofA BBB Corporate Option-Adjusted Spread',
-    'BAMLC0A1AALH': 'ICE BofA AA Corporate Option-Adjusted Spread',
     'AAA': 'Moody\'s Seasoned Aaa Corporate Bond Yield',
     'BAA': 'Moody\'s Seasoned Baa Corporate Bond Yield',
     'DBAA': 'Moody\'s Daily Seasoned Baa Corporate Bond Yield',
@@ -93,7 +92,7 @@ ticker_macro = {
     'BUSLOANS': 'Commercial and Industrial Loans (Alternative)',
     'TOTALSL': 'Total Consumer Credit Outstanding',
     'REVOLSL': 'Revolving Consumer Credit Outstanding',
-    'NONREVOLSL': 'Nonrevolving Consumer Credit Outstanding',
+    'NONREVSL': 'Nonrevolving Consumer Credit Outstanding',
     'GFDEBTN': 'Federal Debt: Total Public Debt',
     'GFDEGDQ188S': 'Federal Debt Held by the Public as Percent of GDP',
     'REALLN': 'Real Estate Loans: All Commercial Banks',
@@ -111,6 +110,6 @@ ticker_macro = {
     'EXHOSLUSM495N': 'Existing Home Sales',
     'MORTGAGE30US': '30-Year Fixed Rate Mortgage Average',
     'BOPGSTB': 'U.S. International Trade in Goods and Services Deficit/Surplus',
-    'TWEXBPAE01': 'Real Broad Dollar Index',
+    'DTWEXBGS': 'Nominal Broad U.S. Dollar Index',
     'DTWEXAFEGS': 'Nominal Goods Dollar Index'
 }

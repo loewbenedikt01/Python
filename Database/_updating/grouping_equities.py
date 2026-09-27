@@ -6,13 +6,11 @@ import concurrent.futures as cf
 import pandas as pd
 import yfinance as yf
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _ROOT)
-sys.path.insert(0, _HERE)
+# parent of the Database package, so `from Database._updating...` resolves
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from Database.Database_Update.update_database import DATABASE_DIR, get_currency, get_country_continent
-from Database.Database_Update.ticker_files.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
+from Database._updating.update_database import DATABASE_DIR, get_currency, get_country_continent
+from Database._tickers.equities import ticker_us, ticker_de, ticker_asia, ticker_europe, ticker_rotw
 
 MAPPING_FILENAME = 'equities_mapping.parquet'
 MAX_WORKERS = 10
