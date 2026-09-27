@@ -290,6 +290,11 @@ def share_events(pcon) -> pd.DataFrame:
     deals = pcon.execute("""
         SELECT corporate_id, coalesce(CAST(acceptance_time AS DATE), filed_date) AS d FROM c.sec_filings
         WHERE form_type = '8-K' AND items LIKE '%2.01%'""").df()
+    # deals the 8-K didn't report under item 2.01 (config.KNOWN_DEALS: (primary ticker, completion date))
+    known = [(cid, d) for (t, d) in config.KNOWN_DEALS
+             for cid in comp.loc[comp['primary_ticker'] == t, 'corporate_id']]
+    if known:
+        deals = pd.concat([deals, pd.DataFrame(known, columns=['corporate_id', 'd'])], ignore_index=True)
     deals['d'] = pd.to_datetime(deals['d'])
     by_cid = {cid: g['d'].sort_values() for cid, g in deals.groupby('corporate_id')}
     extra = []

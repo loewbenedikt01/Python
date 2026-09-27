@@ -91,6 +91,11 @@ at the end of each section. Keep adding to it.
     (1999-05-03), TATASTEEL.NS x10.5, NOVO-B.CO x2, ^J203.JO 99,324 -> 179.8 -> 99,971, and CHIF (a
     sector ETF priced at $0.02-0.05, 154 days).
 - The adj_close change check of the prices step ignores corrected rows (no reload loop).
+- **Pre-2000 non-US prices from Yahoo are lower quality:** stale or month-end-only prints (FMG.AX in
+  1995-1998 moves only at month ends), flat zero-volume rows, occasional wrong values that don't come back
+  within 3 days (so they aren't flagged as spikes). Use non-US history before 2000 with care (weekly /
+  monthly returns rather than daily). Of the 418 non-US `daily_jump` flags, 34 are before 2000, 231 in
+  2000-2009 and 153 from 2010.
 
 ## FX (`fx_rates_daily`)
 
@@ -222,15 +227,23 @@ at the end of each section. Keep adding to it.
 - Market cap = all share classes x the primary listing's close. Non-primary tickers keep their own prices.
   `market_cap` is in the major currency (GBp prices -> GBP), `market_cap_usd` via `fx_to_usd`.
 - **Shares, SEC filers:** the fundamentals' share count (cover page, or balance sheet for multi-class
-  companies), effective from its as-of date and carried forward, **at most `SHARES_STALE_DAYS` (400)**;
-  after that the current yfinance count (Berkshire stopped tagging its cover page in 2011).
+  companies), effective from its as-of date. **Between two SEC counts the earlier one is always carried
+  forward**, however long the gap. yfinance's current count is used only after the last SEC count, once it
+  is older than `SHARES_STALE_DAYS` (400), and for companies without SEC counts (Berkshire stopped tagging its
+  cover page in 2011).
+  - Known effect: companies whose usable SEC counts end early jump to yfinance's current count at that point
+    (a `daily_jump` flag). RNG has a single SEC count (2013-12-31, 37.1M; later counts are per share class,
+    which company facts don't carry) and jumps to 83.5M on 2015-02-04. SPG tags 0 shares from 2010 on
+    (dropped), last usable count 2009-09-30 (283.3M), yfinance 379.6M from 2010-11-04.
 - **Before the first SEC count** the earliest count is extended backwards in split-adjusted terms
   (`shares_source = 'sec_backfilled'`), so US companies also go back to 1995. This is an approximation:
   buybacks and issuance before the first XBRL filing are not reflected.
 - **Share issuance through a deal:** if two consecutive SEC counts differ by more than 20 % and an 8-K
   with item 2.01 (completion of an acquisition) lies between them, the new count applies from the 8-K
   date (`shares_source = 'sec_after_deal'`), not only from the next cover page (DVN: 621M -> 1.1bn shares
-  on 2026-05-07; the next cover page was 2026-07-22).
+  on 2026-05-07; the next cover page was 2026-07-22). Deals reported under another item go into
+  `config.KNOWN_DEALS` (PNR 2012-09-28, Tyco Flow Control merger, 99.2M -> 210.3M shares; its 8-K of
+  2012-10-01 uses item 8.01).
 - **Glitches in SEC counts are dropped** (the previous count carries on): counts below 10,000 (FOXA's
   1-share placeholder from before its listing), counts more than 100x off the company's median, points
   more than 2x off the median of their 5 neighbours (cover pages tagged in thousands), and a single count

@@ -135,6 +135,11 @@ PRIMARY_TICKER_OVERRIDES = {}               # corporate_id -> ticker used for ma
 SHARES_STALE_DAYS = 400
 # primary tickers whose SEC share counts do not fit the listing's price (share classes) -> yfinance only
 MARKETCAP_YFINANCE_ONLY = {'BRK-B'}          # SEC counts are Class A shares, primary listing is Class B
+# completed deals whose 8-K didn't use item 2.01: (primary ticker, completion date) -> note. The new SEC share
+# count applies from that date (shares_source 'sec_after_deal') and the day is not a market cap check flag.
+KNOWN_DEALS = {
+    ('PNR', '2012-09-28'): 'Tyco Flow Control merger; 8-K of 2012-10-01 reports it under item 8.01',
+}
 # Yahoo records spin-offs as fractional stock_splits. For SEC companies the real split factor is
 # SEC shares after / before the event, rounded to a clean ratio (within SPLIT_RATIO_TOLERANCE);
 # the rest of Yahoo's factor is price-only. Counts more than SPLIT_SEC_MAX_DAYS from the event, or
