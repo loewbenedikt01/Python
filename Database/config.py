@@ -27,7 +27,6 @@ RAW_DB        = DATA_DIR / 'raw.duckdb'
 CORPORATE_IDS_CSV     = DATA_DIR / 'corporate_ids.csv'                 # single source of truth
 # corrections to the ticker files (ticker, change, old_name, new_name, note), applied once by the ids step
 TICKER_CHANGES_CSV    = DATA_DIR / 'review' / 'equities_changes.csv'
-OLD_CORPORATE_IDS_CSV = BASE_DIR / '_database' / 'corporate_ids.csv'   # read once to keep old ids
 
 
 # ----

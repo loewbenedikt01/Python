@@ -3,7 +3,6 @@
 *.csv
 *.duckdb
 *.duckdb.wal
-!Database/_database/corporate_ids.csv
 
 # Pipeline data (Database/data): everything generated, except the permanent ID registry
 Database/data/*

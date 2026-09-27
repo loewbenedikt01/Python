@@ -71,16 +71,6 @@ def save_registry(df: pd.DataFrame, path=config.CORPORATE_IDS_CSV) -> None:
     df[REGISTRY_COLS].to_csv(path, index=False)
 
 
-def load_old_ids(path=config.OLD_CORPORATE_IDS_CSV) -> dict[str, int]:
-    """
-    Ticker -> ID from the previous registry (_database/corporate_ids.csv).
-    """
-    if not path.exists():
-        return {}
-    old = pd.read_csv(path, dtype={'Ticker': str})
-    return dict(zip(old['Ticker'], old['corporate_id'].astype(int)))
-
-
 def apply_ticker_changes(registry: pd.DataFrame, changes: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     """
     Apply a corrections list (columns ticker, change) to the registry before
@@ -341,8 +331,6 @@ def run(ctx: common.RunContext) -> common.StepResult:
     sec = sec_tickers()
     cik_map, rank_map, review = resolve_ciks(equities, sec)
     registry = load_registry()
-    first_run = registry.empty
-    old_ids = load_old_ids() if first_run else {}
 
     # corrections list, applied once per file version
     change_counts, change_key = {}, None
@@ -367,8 +355,7 @@ def run(ctx: common.RunContext) -> common.StepResult:
             registry, change_counts = apply_ticker_changes(registry, pending)
             log.info(f'{config.TICKER_CHANGES_CSV.name}: {len(pending)} new rows applied: {change_counts}')
 
-    new_registry, counts = assign_ids(equities, cik_map, rank_map, registry, old_ids,
-                                      old_ids_date=_old_file_date() if first_run else None)
+    new_registry, counts = assign_ids(equities, cik_map, rank_map, registry, {})
     save_registry(new_registry)
     pd.DataFrame(review).to_csv(SEC_MATCHES_CSV, index=False)
     status = new_registry['status'].value_counts().to_dict()
@@ -421,8 +408,3 @@ def run(ctx: common.RunContext) -> common.StepResult:
     result.skipped = counts['kept']
     result.failed  = [r['ticker'] for r in review if r['method'] == 'not found']
     return result
-
-
-def _old_file_date() -> str:
-    p = config.OLD_CORPORATE_IDS_CSV
-    return date.fromtimestamp(p.stat().st_mtime).isoformat() if p.exists() else date.today().isoformat()
