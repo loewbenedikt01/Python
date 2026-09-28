@@ -121,7 +121,7 @@ close right away (like the Streamlit app); if a run finds a database locked, it 
 streamlit run ../Platform/interface/interface.py
 ```
 
-Two pages: **Markets** (all instruments, movers, charts, compare) and **Company** (header with price and market
+Three pages: **Headquarters** (3D globe with every company's headquarters, filters for sector, industry, region, country, market cap and name; click a dot to open the company), **Markets** (all instruments, movers, charts, compare) and **Company** (header with price and market
 cap; tabs Overview, Financials, Holders, Executives, Subsidiaries, Calendar, Clinical Trials). Click an equity on
 the Markets page to open its company page, or open `/company?company=AAPL`. Queries: `company_data.py`.
 

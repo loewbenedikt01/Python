@@ -55,6 +55,61 @@ def companies(folder) -> pd.DataFrame:
             ORDER BY name""").df()
 
 
+def hq_points(folder) -> pd.DataFrame:
+    """
+    Active companies with headquarters coordinates: ticker, name, sector, industry, country, continent,
+    hq_city, hq_country, hq_lat, hq_lon, hq_geo_source, sec_filer, market_cap_usd (latest).
+    """
+    with connect(folder, 'companies', attach=('prices',)) as con:
+        return con.execute("""
+            WITH mc AS (SELECT corporate_id, arg_max(market_cap_usd, date) AS market_cap_usd
+                        FROM prices.market_cap_daily GROUP BY 1)
+            SELECT c.corporate_id, c.primary_ticker, c.tickers, c.name, coalesce(c.sector, 'Unknown') AS sector,
+                   coalesce(c.industry, 'Unknown') AS industry, c.country, coalesce(c.continent, 'Unknown') AS continent,
+                   c.hq_city, coalesce(c.hq_country, c.country) AS hq_country, c.hq_lat, c.hq_lon, c.hq_geo_source,
+                   coalesce(c.sec_filer, FALSE) AS sec_filer, mc.market_cap_usd
+            FROM company_info c LEFT JOIN mc USING (corporate_id)
+            WHERE coalesce(c.status, 'active') = 'active' AND c.hq_lat IS NOT NULL AND c.primary_ticker IS NOT NULL
+            ORDER BY c.name""").df()
+
+
+def _plain(text) -> str:
+    import unicodedata
+    return unicodedata.normalize('NFKD', str(text or '')).encode('ascii', 'ignore').decode().lower()
+
+
+def search_companies(comps: pd.DataFrame, query: str, limit: int = 8) -> pd.DataFrame:
+    """
+    Companies matching `query` (case and accents ignored), best first:
+    0 ticker equals it (any listing: GOOG -> Alphabet), 1 ticker starts with it, 2 name starts with it,
+    3 a word of the name starts with it, 4 name contains it. No fuzzy matching.
+    """
+    q = _plain(query).strip()
+    if not q:
+        return comps.iloc[0:0]
+    scores = []
+    for p, ts, name in zip(comps['primary_ticker'], comps['tickers'], comps['name']):
+        tks = [_plain(t) for t in ([p] + list(ts if ts is not None else []))]
+        nm = _plain(name)
+        words = nm.replace('-', ' ').replace(',', ' ').replace('.', ' ').split()
+        if q in tks:
+            sc = 0
+        elif any(t.startswith(q) for t in tks):
+            sc = 1
+        elif nm.startswith(q):
+            sc = 2
+        elif any(w.startswith(q) for w in words):
+            sc = 3
+        elif q in nm:
+            sc = 4
+        else:
+            sc = None
+        scores.append(sc)
+    out = comps.assign(_score=scores).dropna(subset=['_score'])
+    out = out.assign(_len=out['name'].str.len()).sort_values(['_score', '_len', 'name'])
+    return out.drop(columns=['_score', '_len']).head(limit)
+
+
 def header(folder, corporate_id: int) -> dict:
     """
     Company info plus the latest price, market cap, shares, 52-week range and next earnings date.

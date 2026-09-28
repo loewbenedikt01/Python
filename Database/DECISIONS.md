@@ -32,6 +32,22 @@ at the end of each section. Keep adding to it.
   also the ETFs moved to etfs.py), `reassigned`, `merged`. Only active companies are refreshed and get a
   market cap; `instruments.status = 'removed'` for tickers no longer in any file (prices step skips them).
 
+## Headquarters coordinates (`company_info.hq_lat`, `hq_lon`, `hq_geo_source`)
+
+- Geocoded from the HQ city (yfinance / SEC address) by the companies step, only for new companies and changed
+  addresses (`hq_geo_key`). Offline first with **GeoNames cities1000** (places > 1,000 inhabitants, free, no key,
+  cached in `data/cache/geonames/`), in the HQ country: exact name / ASCII / alternate name (ø -> o, æ -> ae),
+  comma parts and without district words ('Jakarta Selatan'); same-named places -> the one in the HQ state, else
+  the largest; then a place starting with the name ('Weinstadt' -> 'Weinstadt-Endersbach') or a single word
+  ('Rapperswil-Jona'). Source `city`.
+- US-listed companies based abroad have HQ country 'United States' and a foreign city ('LONDON ENGLAND', 'ZURICH'):
+  the city worldwide among places > 100,000 inhabitants (`city_world`).
+- The rest (small places, business parks: Bagsværd, Schiphol, Worblaufen) via **OpenStreetMap Nominatim** (full
+  address, then city; max. 1 request per second) (`nominatim`); last resort the country's largest city
+  (`country_fallback`). First run: 1,382 city, 14 nominatim, 5 city_world; Michelin has no address (not on the
+  globe). Not by city -> `data/review/hq_geocode_unmatched.csv`.
+- It's the city, not the building: companies in the same city share a point (the globe spreads them slightly).
+
 ## SEC matching
 
 - Only US companies (`ticker_us`) are matched to SEC. `MATCH_NON_US_TO_SEC = False`: name matching gave

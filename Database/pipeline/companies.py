@@ -22,7 +22,7 @@ import pandas as pd
 import yfinance as yf
 
 import config
-from pipeline import common
+from pipeline import common, geocode
 from pipeline.ids import load_registry
 
 
@@ -486,6 +486,11 @@ def run(ctx: common.RunContext) -> common.StepResult:
         result.rows += common.upsert(con, 'company_info', companies)
         result.updated = len(companies)
         n = sync_employees(con, companies['corporate_id'].tolist()) if not companies.empty else 0
+        # HQ coordinates for new companies and changed addresses (GeoNames, Nominatim for the rest)
+        try:
+            geocode.geocode(con)
+        except Exception as e:
+            result.fail('geocode', common.format_error(e), log)
         if n:
             log.info(f'employees written into {n} fundamentals_yearly rows')
         if not ctx.tickers:

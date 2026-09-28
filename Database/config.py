@@ -319,6 +319,8 @@ RATE_LIMITS = {
     'finnhub': (60, 60),
     'fred':    (120, 60),
     'ctgov':   (50, 60),
+    'geonames': (10, 60),
+    'nominatim': (1, 1.1),                  # OpenStreetMap usage policy: max 1 request / second
     'yfinance': (240, 60),
 }
 # a database file held by another process (Streamlit app, notebook): wait and retry, logged

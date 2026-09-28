@@ -113,11 +113,27 @@ def render_page() -> None:
     primary = {t: p for p, ts in zip(comps['primary_ticker'], comps['tickers']) for t in (ts if ts is not None else [])}
     primary.update({t: t for t in tickers})
     clicked = st.session_state.pop('company', None)                 # row clicked on the Markets page
-    if clicked or 'company_select' not in st.session_state:
+    if clicked or 'company_current' not in st.session_state:
         want = clicked or st.query_params.get('company', 'AAPL')
-        st.session_state['company_select'] = primary.get(want, tickers[0])
-    ticker = st.selectbox('Company', tickers, format_func=lambda t: f'{t} · {names.get(t, "")}',
-                          key='company_select')
+        st.session_state['company_current'] = primary.get(want, tickers[0])
+
+    def pick(t: str) -> None:                                    # button callback: open it, clear the search
+        st.session_state['company_current'] = t
+        st.session_state['company_q'] = ''
+
+    q = st.text_input('Search company', key='company_q', placeholder='Name or ticker, e.g. Moderna or MRNA')
+    if q.strip():
+        hits = cd.search_companies(comps, q)
+        if hits.empty:
+            st.caption(f'No company matches "{q}".')
+        elif len(hits) == 1:
+            st.session_state['company_current'] = hits.iloc[0]['primary_ticker']
+        else:
+            cols = st.columns(4)
+            for i, r in enumerate(hits.itertuples(index=False)):
+                cols[i % 4].button(f'{r.primary_ticker} · {r.name}', key=f'hit_{r.primary_ticker}',
+                                   on_click=pick, args=(r.primary_ticker,), width='stretch')
+    ticker = st.session_state['company_current']
     if st.query_params.get('company') != ticker:
         st.query_params['company'] = ticker
     row = comps[comps['primary_ticker'] == ticker].iloc[0]
@@ -238,10 +254,7 @@ def tab_overview(folder, cid, ticker, h, sec) -> None:
             f"**Reporting currency** {h['reporting_currency']}" if h.get('reporting_currency') else None) if x))
         desc = h.get('business_description')
         if desc:
-            st.write(desc if len(desc) < 700 else desc[:700].rsplit(' ', 1)[0] + ' …')
-            if len(desc) >= 700:
-                with st.expander('Full description'):
-                    st.write(desc)
+            st.write(desc)
         if sec:
             f = load('filings', folder, cid, 8)
             if not f.empty:

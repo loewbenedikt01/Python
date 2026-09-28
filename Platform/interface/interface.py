@@ -37,7 +37,8 @@ import streamlit as st
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))      # company_page / company_data next to this file
-import company_page  # noqa: E402
+import company_page
+import headquarters_page
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -417,4 +418,7 @@ with st.sidebar:
 
 MARKETS = st.Page(markets_page, title="Markets", icon=":material/show_chart:", default=True)
 COMPANY = st.Page(company_page.render_page, title="Company", icon=":material/apartment:", url_path="company")
-st.navigation([MARKETS, COMPANY]).run()
+HEADQUARTERS = st.Page(headquarters_page.render_page, title="Headquarters", icon=":material/public:",
+                       url_path="headquarters")
+headquarters_page.COMPANY_PAGE = COMPANY           # a click on the globe opens the company page
+st.navigation([MARKETS, COMPANY, HEADQUARTERS]).run()

@@ -367,6 +367,11 @@ ALTER TABLE prices_daily ADD COLUMN IF NOT EXISTS price_suspect BOOLEAN DEFAULT 
 """
 
 COMPANIES_MIGRATIONS = """
+-- headquarters coordinates (pipeline/geocode.py, GeoNames): source 'city' / 'country_fallback'
+ALTER TABLE company_info ADD COLUMN IF NOT EXISTS hq_lat DOUBLE;
+ALTER TABLE company_info ADD COLUMN IF NOT EXISTS hq_lon DOUBLE;
+ALTER TABLE company_info ADD COLUMN IF NOT EXISTS hq_geo_source VARCHAR;
+ALTER TABLE company_info ADD COLUMN IF NOT EXISTS hq_geo_key VARCHAR;       -- city|state|country when geocoded
 -- company status from corporate_ids.csv: active / removed / reassigned / merged
 ALTER TABLE company_info ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'active';
 -- yfinance share count (all classes: impliedSharesOutstanding) for market cap of non-SEC companies
