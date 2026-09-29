@@ -1,5 +1,5 @@
 @echo off
-rem Daily pipeline run (Windows Task Scheduler "MarketDataPipeline", Mon-Sat 23:30).
+rem Daily pipeline run (Windows Task Scheduler "MarketDataPipeline", Mon-Sat 22:00).
 rem Output of each run: data\logs\daily_YYYY-MM-DD_HHMM.log
 rem Saturdays: weekly copy of raw.duckdb (clinical-trial versions can't be re-downloaded) and
 rem corporate_ids.csv to %USERPROFILE%\Backups\database_weekly\, the last 8 copies of each are kept.

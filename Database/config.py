@@ -270,7 +270,8 @@ ALPACA_FEEDS            = ['sip', 'iex']    # tried in this order
 TRIAL_SPONSORS = []                         # extra sponsor searches, e.g. ['Eli Lilly and Company']
 TRIAL_NCT_IDS  = []                         # e.g. ['NCT01234567']
 TRIAL_SECTORS  = ['Healthcare']             # companies whose trials are searched (company_info.sector)
-TRIAL_MAX_TRIALS = 10_000                   # at most this many trials stored (new searches share the budget)
+TRIAL_MAX_TRIALS = 60_000                   # at most this many trials stored (new searches share the budget)
+TRIAL_START_FROM = '2015-01-01'             # company searches: only trials starting on / after this date
 # primary ticker -> sponsor search texts (query.spons), replacing the company name, where trials are
 # registered under another name. Also used to match sponsors to the company.
 TRIAL_SPONSOR_ALIASES = {

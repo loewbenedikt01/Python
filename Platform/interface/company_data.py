@@ -126,12 +126,13 @@ def header(folder, corporate_id: int) -> dict:
             ORDER BY date DESC LIMIT 2""", [ticker]).fetchall()
         if px:
             out.update(price_date=px[0][0], price=px[0][1], price_currency=px[0][2], price_usd=px[0][3],
-                       prev_close=px[1][1] if len(px) > 1 else None)
+                       prev_close=px[1][1] if len(px) > 1 else None,
+                       prev_close_usd=px[1][3] if len(px) > 1 else None)
         rng = con.execute("""
-            SELECT min(low), max(high) FROM prices_daily
+            SELECT min(low), max(high), min(low_usd), max(high_usd) FROM prices_daily
             WHERE ticker = ? AND date > (SELECT max(date) FROM prices_daily WHERE ticker = ?) - INTERVAL 365 DAY
               AND NOT coalesce(price_suspect, FALSE)""", [ticker, ticker]).fetchone()
-        out.update(low_52w=rng[0], high_52w=rng[1])
+        out.update(low_52w=rng[0], high_52w=rng[1], low_52w_usd=rng[2], high_52w_usd=rng[3])
         mc = con.execute("""
             SELECT date, market_cap, currency, market_cap_usd, shares_outstanding, shares_source
             FROM market_cap_daily WHERE corporate_id = ? ORDER BY date DESC LIMIT 1""", [corporate_id]).fetchone()
@@ -162,7 +163,7 @@ def daily_prices(folder, ticker: str, corporate_id: int | None = None) -> pd.Dat
     """
     with connect(folder, 'prices') as con:
         df = con.execute("""
-            SELECT date, open, high, low, close, volume FROM prices_daily
+            SELECT date, open, high, low, close, close_usd, volume FROM prices_daily
             WHERE ticker = ? AND close IS NOT NULL AND NOT coalesce(price_suspect, FALSE) ORDER BY date""",
             [ticker]).df()
         if corporate_id is not None and not df.empty:

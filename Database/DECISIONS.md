@@ -318,7 +318,7 @@ at the end of each section. Keep adding to it.
   Streamlit app, a notebook), the pipeline logs it and retries every 30 s for up to 10 minutes
   (`DB_LOCK_RETRY_SECONDS`, `DB_LOCK_MAX_WAIT_SECONDS`), then the step fails. Other IO errors are not retried.
   The Streamlit app opens read-only, queries and closes at once, and caches only the data, so it doesn't block.
-- **Daily run:** Task Scheduler `MarketDataPipeline`, Mon-Sat 23:30, `run_daily.bat`, log in `data/logs/`;
+- **Daily run:** Task Scheduler `MarketDataPipeline`, Mon-Sat 22:00, `run_daily.bat`, log in `data/logs/`;
   missed runs start as soon as possible.
 - **Weekly backup (Saturday run):** `raw.duckdb` (the clinical-trial version history can't be downloaded
   again) and `corporate_ids.csv` -> `~/Backups/database_weekly/<name>_<date>`, the last 8 of each kept
@@ -477,10 +477,15 @@ at the end of each section. Keep adding to it.
   **healthcare companies** (`TRIAL_SECTORS`, 128 companies), searched by sponsor / collaborator text
   (`query.spons`) with the company name without its legal form, or `TRIAL_SPONSOR_ALIASES` where trials are
   filed under another name (Merck Sharp & Dohme, ModernaTX, Janssen, Otsuka, Takeda, ...).
-- **At most `TRIAL_MAX_TRIALS` (10,000) trials for now.** The searches found 69,585 trials; the budget is shared
-  (small searches get all their trials, large ones share the rest equally), newest start date first. First
-  load: 9,640 trials in 5.5 minutes (34 MB). Searches that got all their trials (`trial_searches.complete`)
-  are then updated incrementally; the others continue when budget is left (raise the limit).
+- **Company searches cover trials starting on or after `TRIAL_START_FROM` (2015-01-01; 2017-01-01 until
+  2026-09-29)**, so the company page's 10-year chart is complete; at most `TRIAL_MAX_TRIALS` (60,000) trials are stored. (History: the first load was
+  capped at 10,000 trials without a date window, newest first; big pharma then only had its last ~150-450 trials,
+  barely reaching back to 2025. The 2017 window: 26,009 trials across the searches, with overlaps.) The budget is
+  shared (small searches get all their trials, large ones share the rest), newest start date first. A search
+  remembers how far it got (`n_fetched`) and continues in a later run; a search made with another
+  `TRIAL_START_FROM` starts again. Trials stored earlier (also before 2017) stay and keep being updated.
+- Company page chart: trials per start year, last 10 years, stacked by phase in **one green, light (Phase 1) to
+  dark (Phase 4)** - the phases are ordered, so an ordered ramp, not different hues.
 - One row per trial and version. `last_change_date` = `protocolSection.statusModule.lastUpdatePostDateStruct.date`
   ('YYYY-MM' -> first of the month).
 - **Change = different content hash**: sha256 of the normalised JSON (sorted keys), so identical content never

@@ -64,6 +64,7 @@ log = common.get_logger('pipeline.trials')
 API = 'https://clinicaltrials.gov/api/v2/studies'
 PAGE_SIZE = 1000
 IDS_PER_REQUEST = 200             # NCT IDs per filter.ids request (keeps the URL short)
+BUILD_BATCH = 4000                # trials per batch when the company tables are built (memory)
 VERSIONS_DIR = config.DATA_DIR / 'trials' / 'versions'
 UNMATCHED_CSV = config.REVIEW_DIR / 'trial_sponsors_unmatched.csv'
 RAW_COLUMNS = ['nct_id', 'raw_json', 'last_change_date', 'version', 'downloaded_at', 'json_hash',
@@ -289,6 +290,18 @@ def since_filter(since) -> dict:
     return {'filter.advanced': f'AREA[LastUpdatePostDate]RANGE[{since:%Y-%m-%d},MAX]'} if since else {}
 
 
+def search_filter(since=None) -> dict:
+    """
+    Company searches: trials starting on / after TRIAL_START_FROM, and (incremental) updated since `since`.
+    """
+    parts = []
+    if config.TRIAL_START_FROM:
+        parts.append(f'AREA[StartDate]RANGE[{config.TRIAL_START_FROM},MAX]')
+    if since:
+        parts.append(f'AREA[LastUpdatePostDate]RANGE[{since:%Y-%m-%d},MAX]')
+    return {'filter.advanced': ' AND '.join(parts)} if parts else {}
+
+
 # ----
 # STORAGE: Parquet versions + view
 # ----
@@ -375,8 +388,10 @@ def run(ctx: common.RunContext) -> common.StepResult:
         latest = {r[0]: {'version': r[1], 'json_hash': r[2]} for r in rcon.execute("""
             SELECT nct_id, version, json_hash FROM clinical_trials_raw WHERE is_latest""").fetchall()} if has_view else {}
         since = rcon.execute('SELECT max(last_change_date) FROM clinical_trials_raw').fetchone()[0] if has_view else None
-        searched = {t: (n, done, f or 0) for t, n, done, f in rcon.execute(
-            'SELECT term, n_total, complete, n_fetched FROM trial_searches').fetchall()}
+        # a search made with another TRIAL_START_FROM counts as not searched
+        searched = {t: (n, done, f or 0) for t, n, done, f, sf in rcon.execute(
+            'SELECT term, n_total, complete, n_fetched, start_from FROM trial_searches').fetchall()
+            if (sf or None) == (config.TRIAL_START_FROM or None)}
         searches = company_searches(ccon) if not ctx.nct_ids else pd.DataFrame(columns=['corporate_id', 'ticker', 'term'])
     finally:
         ccon.close()
@@ -415,12 +430,12 @@ def run(ctx: common.RunContext) -> common.StepResult:
     for s in searches.itertuples(index=False):
         n, done, fetched = searched.get(s.term, (None, False, 0))
         if done:
-            add(f'search {s.term}', {'query.spons': s.term, **since_filter(since)})
+            add(f'search {s.term}', {'query.spons': s.term, **search_filter(since)})
             search_rows.append({'term': s.term, 'ticker': s.ticker, 'n_total': n, 'complete': True, 'last_run': now,
-                                'n_fetched': fetched})
+                                'n_fetched': fetched, 'start_from': config.TRIAL_START_FROM})
         else:
             try:
-                todo[s.term] = (count({'query.spons': s.term}), s.ticker, fetched)
+                todo[s.term] = (count({'query.spons': s.term, **search_filter()}), s.ticker, fetched)
             except Exception as e:
                 result.fail(f'search {s.term}', common.format_error(e), log)
     if todo:
@@ -433,11 +448,12 @@ def run(ctx: common.RunContext) -> common.StepResult:
         for term, (n, ticker, fetched) in todo.items():
             if not alloc[term]:
                 continue
-            got = add(f'search {term}', {'query.spons': term, 'sort': 'StartDate:desc'}, fetched + alloc[term])
+            got = add(f'search {term}', {'query.spons': term, 'sort': 'StartDate:desc', **search_filter()},
+                      fetched + alloc[term])
             if got is None:
                 continue
             search_rows.append({'term': term, 'ticker': ticker, 'n_total': n, 'complete': len(got) >= n,
-                                'last_run': now, 'n_fetched': len(got)})
+                                'last_run': now, 'n_fetched': len(got), 'start_from': config.TRIAL_START_FROM})
         # overlapping searches can bring more new trials than the budget: keep the budget
         new = [k for k in studies if k not in before]
         for k in new[budget:]:
@@ -480,7 +496,12 @@ def build_company_tables(rcon) -> None:
     """
     clinical_trials and clinical_trial_sponsors (companies.duckdb) from the latest versions.
     """
-    trials = rcon.execute("""
+    # latest version per trial first (no JSON read), then the fields in batches: reading all versions' JSON at once
+    # with a window over it needed > 25 GB for 31k trials
+    rcon.execute(f"""CREATE OR REPLACE TEMP TABLE _latest AS
+                     SELECT nct_id, max(version) AS version FROM read_parquet('{_pattern()}') GROUP BY 1""")
+    ids = [r[0] for r in rcon.execute('SELECT nct_id FROM _latest ORDER BY 1').fetchall()]
+    fields = """
         SELECT nct_id, version,
                raw_json->>'$.protocolSection.identificationModule.briefTitle' AS title,
                raw_json->>'$.protocolSection.statusModule.overallStatus' AS overall_status,
@@ -500,7 +521,14 @@ def build_company_tables(rcon) -> None:
                raw_json->>'$.protocolSection.sponsorCollaboratorsModule.leadSponsor.class' AS lead_class,
                json_extract_string(raw_json, '$.protocolSection.sponsorCollaboratorsModule.collaborators[*].name') AS collab_names,
                json_extract_string(raw_json, '$.protocolSection.sponsorCollaboratorsModule.collaborators[*].class') AS collab_classes
-        FROM clinical_trials_raw WHERE is_latest""").df()
+        FROM (SELECT p.nct_id, p.version, p.last_change_date, CAST(p.raw_json AS JSON) AS raw_json
+              FROM read_parquet('{pattern}') p JOIN _latest l USING (nct_id, version)
+              WHERE p.nct_id IN (SELECT unnest(?)))"""
+    parts = []
+    for i in range(0, len(ids), BUILD_BATCH):
+        parts.append(rcon.execute(fields.format(pattern=_pattern()), [ids[i:i + BUILD_BATCH]]).df())
+    trials = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+    rcon.execute('DROP TABLE IF EXISTS _latest')
 
     def to_date(s):
         return pd.to_datetime(s.map(lambda d: d if not isinstance(d, str) or len(d) > 7 else f'{d}-01'),

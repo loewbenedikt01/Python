@@ -320,6 +320,8 @@ CREATE TABLE IF NOT EXISTS trial_searches (
 );
 -- trials fetched so far (newest start first): an incomplete search continues after them
 ALTER TABLE trial_searches ADD COLUMN IF NOT EXISTS n_fetched INTEGER;
+-- TRIAL_START_FROM the search ran with; a different value starts the search again
+ALTER TABLE trial_searches ADD COLUMN IF NOT EXISTS start_from VARCHAR;
 
 -- SEC Forms 3 / 4 / 5: non-derivative transactions of the covered US companies,
 -- one row per transaction and reporting owner (joint filings have several owners)

@@ -196,6 +196,7 @@ corporate_id,company_name,cik,tickers,assigned_at,merged_into,status
 51897,"Bio-Rad Laboratories, Inc.",12208,BIO,2026-09-25,,active
 70367,Bio-Techne Corporation,842023,TECH,2026-09-25,,active
 39346,BioMérieux S.A.,,BIM.PA,2026-09-25,,active
+37628,BioNTech SE,,BNTX,2026-09-29,,active
 98133,Biocon Limited,,BIOCON.NS,2026-09-25,,active
 63329,Biogen Inc.,875045,BIIB,2026-09-25,,active
 26490,"BlackRock, Inc.",2012383,BLK,2026-09-25,,active
@@ -1050,6 +1051,7 @@ corporate_id,company_name,cik,tickers,assigned_at,merged_into,status
 83607,Rio Tinto Limited,,RIO.AX,2026-09-25,,active
 66646,Rio Tinto plc,,RIO.L,2026-09-25,,active
 88871,Robert Half Inc.,315213,RHI,2026-09-25,,active
+77479,Roche Holding,,ROG.SW,2026-09-29,,active
 53240,"Rockwell Automation, Inc.",1024478,ROK,2026-09-25,,active
 57481,Rogers Communications Inc.,,RCI-B.TO,2026-09-25,,active
 45264,"Ross Stores, Inc.",745732,ROST,2026-09-25,,active
@@ -1345,6 +1347,7 @@ corporate_id,company_name,cik,tickers,assigned_at,merged_into,status
 10784,WH Group Limited,,0288.HK,2026-09-25,,active
 25534,Wacker Chemie AG,,WCH.DE,2026-09-25,,active
 35211,"Wal-Mart de México, S.A.B. de C.V.",,WALMEX.MX,2026-09-25,,active
+94282,Walgreens Boots Alliance,1618921,WBA,2026-09-29,,active
 21391,Walmart Inc.,104169,WMT,2026-09-25,,active
 30994,Wan Hai Lines Ltd.,,2615.TW,2026-09-25,,active
 36756,"Wanhua Chemical Group Co., Ltd.",,600309.SS,2026-09-25,,active
@@ -1395,6 +1398,7 @@ corporate_id,company_name,cik,tickers,assigned_at,merged_into,status
 55253,Zebra Technologies Corporation,877212,ZBRA,2026-09-25,,active
 93511,"Zijin Mining Group Co., Ltd.",,2899.HK;601899.SS,2026-09-25,,active
 99652,"Zions Bancorporation, N.A.",109380,ZION,2026-09-25,,active
+58386,Zoetis,1555280,ZTS,2026-09-29,,active
 36468,Zurich Insurance Group AG,,ZURN.SW,2026-09-25,,active
 72025,artec technologies AG,,A6T.DE,2026-09-27,,active
 96788,audius SE,,3ITN.DE,2026-09-27,,active

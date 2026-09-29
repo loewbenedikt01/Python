@@ -39,7 +39,7 @@ A step that fails doesn't stop the run; every step writes a row to `load_log` in
 a summary table is printed. Logs: `data/logs/`.
 
 **Daily run:** Windows Task Scheduler task `MarketDataPipeline` runs `run_daily.bat` Monday-Saturday at
-23:30 (output: `data/logs/daily_<date>_<time>.log`). If the computer was off, it runs as soon as possible
+22:00 (output: `data/logs/daily_<date>_<time>.log`). If the computer was off, it runs as soon as possible
 afterwards. Only while you are logged on. On Saturdays `backup_weekly.ps1` then copies `raw.duckdb` and
 `corporate_ids.csv` to `~/Backups/database_weekly/` (last 8 kept) and mirrors the trial versions
 (`data/trials/versions/`). Definition: `run_daily_task.xml`; re-register with

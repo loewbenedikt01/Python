@@ -11,7 +11,9 @@ ticker_us = {
     'AVGO': 'Broadcom Inc.',
     'TSLA': 'Tesla, Inc.',
     'JPM': 'JPMorgan Chase & Co.',
+    'ZTS': 'Zoetis',
     'UNH': 'UnitedHealth Group Incorporated',
+    'BDX': 'Becon, Dickinson and Company',
     'V': 'Visa Inc.',
     'XOM': 'Exxon Mobil Corporation',
     'MA': 'Mastercard Incorporated',
@@ -330,6 +332,7 @@ ticker_us = {
     'CLX': 'The Clorox Company',
     'CME': 'CME Group Inc.',
     'CMS': 'CMS Energy Corporation',
+    'WBA': 'Walgreens Boots Alliance',
     'CNP': 'CenterPoint Energy, Inc.',
     'CPT': 'Camden Property Trust',
     'CRL': 'Charles River Laboratories International, Inc.',
@@ -436,6 +439,7 @@ ticker_us = {
 }
 
 ticker_de = {
+    'BNTX': 'BioNTech SE',
     'SAP.DE': 'SAP SE',
     'SIE.DE': 'Siemens AG',
     'ALV.DE': 'Allianz SE',
@@ -1153,6 +1157,7 @@ ticker_europe = {
     'SCR.PA': 'SCOR SE',
 
     # Netherlands (.AS)
+    'PHIA.AS': 'Royal Philips', 
     'ASML.AS': 'ASML Holding N.V.',
     'INGA.AS': 'ING Groep N.V.',
     'PRX.AS': 'Prosus N.V.',
@@ -1385,6 +1390,7 @@ ticker_rotw = {
     'VOD.L': 'Vodafone Group plc',
 
     # --- SWITZERLAND (SIX Swiss Exchange: .SW) ---
+    'ROG.SW': 'Roche Holding',
     'NESN.SW': 'Nestlé S.A.',
     'NOVN.SW': 'Novartis AG',
     'UBSG.SW': 'UBS Group AG',

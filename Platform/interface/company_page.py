@@ -13,7 +13,19 @@ import streamlit as st
 
 import company_data as cd
 
-PHASE_COLOURS = {1: '#9ecae1', 2: '#4292c6', 3: '#08519c', 4: '#f16913'}
+# phases 1-4 are ordered: one green, light (phase 1) to dark (phase 4). OKLCH hue 150, lightness steps 0.11 apart;
+# the light end keeps >= 2:1 contrast on the surface (light 2.11, dark mode 3.13)
+PHASE_COLOURS = {'light': {1: '#5ac576', 2: '#32a155', 3: '#007f35', 4: '#005f13'},
+                 'dark': {1: '#90e9a3', 2: '#5ac576', 3: '#2e9e52', 4: '#00792f'}}
+SURFACE = {'light': '#fcfcfb', 'dark': '#1a1a19'}
+TRIAL_YEARS = 10
+
+
+def _theme() -> str:
+    try:
+        return 'dark' if st.context.theme.type == 'dark' else 'light'
+    except Exception:
+        return 'light'
 RANGES = ['1M', '3M', '6M', 'YTD', '1Y', '5Y', 'Max']
 INTRADAY_WINDOWS = {'1m': [1, 2, 5], '5m': [1, 5, 10, 30], '10m': [5, 10, 30, 60], '1h': [30, 90, 180, 365]}
 LABELS = {
@@ -175,20 +187,26 @@ def render_header(h: dict) -> None:
                 + (f" · other listings: {', '.join(t for t in h['tickers'] if t != ticker)}"
                    if h.get('tickers') is not None and len(h['tickers']) > 1 else ''))
     parts = [' › '.join(x for x in (h.get('sector'), h.get('industry')) if x), h.get('country')]
-    if h.get('fiscal_year_end'):
-        parts.append(f"FY ends {h['fiscal_year_end']}")
+    fye = str(h.get('fiscal_year_end') or '')
+    if len(fye) == 4 and fye.isdigit():                      # SEC format MMDD: '1231' -> 'Dec 31'
+        fye = pd.Timestamp(2000, int(fye[:2]), int(fye[2:])).strftime('%b %d').replace(' 0', ' ')
+    if fye:
+        parts.append(f"FY ends {fye}")
     if h.get('employees') and pd.notna(h.get('employees')):
         parts.append(f"{int(h['employees']):,} employees")
     st.caption(' · '.join(p for p in parts if p))
 
     c = st.columns(5)
-    price, prev = h.get('price'), h.get('prev_close')
+    # everything in USD; the local currency only as a note for non-USD listings
+    price, prev = h.get('price_usd'), h.get('prev_close_usd')
     delta = f'{(price / prev - 1) * 100:+.2f}% (1D)' if price and prev else None
-    c[0].metric('Price', f'{num(price)} {cur or ""}', delta)
+    c[0].metric('Price (USD)', f'${num(price)}' if price else '–', delta)
     mc_usd = h.get('market_cap_usd')
-    c[1].metric('Market cap', money(h.get('market_cap'), h.get('mcap_currency')),
-                f'{money(mc_usd, "USD")}' if mc_usd and h.get('mcap_currency') not in (None, 'USD') else None,
-                delta_color='off')
+    c[1].metric('Market cap (USD)', f"${money(mc_usd, '')}" if mc_usd else '–')
+    local = h.get('mcap_currency') or cur
+    if local and local != 'USD':
+        c[0].caption(f"local: {num(h.get('price'))} {cur}")
+        c[1].caption(f"local: {money(h.get('market_cap'), local)}")
     src = {'sec_cover_page': 'SEC cover page', 'sec_balance_sheet': 'SEC balance sheet',
            'sec_after_deal': 'SEC, after deal', 'sec_backfilled': 'SEC', 'yfinance_current': 'yfinance'}
     c[2].metric('Shares', money(h.get('shares'), '', 2),
@@ -199,7 +217,9 @@ def render_header(h: dict) -> None:
     c[3].metric('Next earnings', date_str(nxt) if nxt else '–',
                 ' '.join(x for x in (h.get('next_earnings_time'), h.get('next_earnings_status')) if x) or None,
                 delta_color='off')
-    c[4].metric('52-week range', f"{num(h.get('low_52w'))} – {num(h.get('high_52w'))}",
+    lo, hi = h.get('low_52w_usd'), h.get('high_52w_usd')
+    dig = 0 if hi and hi >= 100 else 2
+    c[4].metric('52-week range (USD)', f"{num(lo, dig)} – {num(hi, dig)}",
                 f"data to {date_str(h.get('price_date'))}", delta_color='off')
 
 
@@ -280,8 +300,8 @@ def daily_chart(folder, cid, ticker, rng, show, marks, h) -> None:
     if df.empty:
         st.info('No prices.')
         return
-    y = 'close' if show == 'Price' else 'market_cap'
-    unit = h.get('price_currency') if show == 'Price' else h.get('mcap_currency')
+    y = 'close_usd' if show == 'Price' else 'market_cap_usd'
+    unit = 'USD'
     fig = go.Figure(go.Scatter(x=df['date'], y=df[y], mode='lines', name=show, line=dict(width=1.6)))
     if marks:
         e = load('earnings_history', folder, cid, ticker, 60)
@@ -361,15 +381,19 @@ def tab_holders(folder, cid) -> None:
         return
     hist = hq.dropna(subset=['inst_ownership_pct']).sort_values('period_end')
     if not hist.empty:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=hist['label'], y=hist['inst_ownership_pct'] * 100, name='Institutional ownership %',
-                                 mode='lines+markers'))
-        fig.add_trace(go.Bar(x=hist['label'], y=hist['n_institutional_holders'], name='Holders', yaxis='y2',
-                             opacity=0.3))
-        fig.update_layout(height=260, margin=dict(t=10, b=10), yaxis=dict(title='% of shares'),
-                          yaxis2=dict(title='Holders', overlaying='y', side='right', showgrid=False),
-                          legend=dict(orientation='h', y=1.1))
-        st.plotly_chart(fig, width='stretch')
+        # inst_ownership_pct is stored in percent (66.0 = 66 %)
+        left, right = st.columns(2)
+        fig = go.Figure(go.Scatter(x=hist['label'], y=hist['inst_ownership_pct'], mode='lines+markers',
+                                   line=dict(width=2), marker=dict(size=8),
+                                   hovertemplate='%{x}: %{y:.1f}%<extra></extra>'))
+        fig.update_layout(height=240, margin=dict(t=30, b=10), title=dict(text='Institutional ownership (% of shares)',
+                          font=dict(size=14)), yaxis=dict(ticksuffix='%', rangemode='tozero'))
+        left.plotly_chart(fig, width='stretch')
+        fig2 = go.Figure(go.Bar(x=hist['label'], y=hist['n_institutional_holders'],
+                                hovertemplate='%{x}: %{y:,} filers<extra></extra>'))
+        fig2.update_layout(height=240, margin=dict(t=30, b=10), title=dict(text='13F filers holding the stock',
+                           font=dict(size=14)))
+        right.plotly_chart(fig2, width='stretch')
 
     with_top = hq[hq['top_holders'].map(lambda v: v is not None and len(v) > 0)]
     if with_top.empty:
@@ -386,19 +410,22 @@ def tab_holders(folder, cid) -> None:
         top = top.sort_values('shares', ascending=False)
     else:
         top = top.rename(columns={'holder_name': 'holder'})
-    top['pct_of_shares_out'] = top['pct_of_shares_out'] * 100
+        top['holder_group'] = top['holder_group'].fillna('')
+    top['holder'] = top['holder'].str.strip()
     st.dataframe(top[['holder'] + (['holder_group'] if not group else []) + ['shares', 'value_usd', 'pct_of_shares_out',
                                                                            'change_shares_vs_prev_quarter']],
                  hide_index=True, width='stretch',
                  column_config={'holder': 'Holder', 'holder_group': 'Group',
-                                'shares': st.column_config.NumberColumn('Shares', format='%,.0f'),
-                                'value_usd': st.column_config.NumberColumn('Value (USD)', format='%,.0f'),
+                                'shares': st.column_config.NumberColumn('Shares', format='localized'),
+                                'value_usd': st.column_config.NumberColumn('Value (USD)', format='compact'),
                                 'pct_of_shares_out': st.column_config.NumberColumn('% of shares', format='%.2f%%'),
                                 'change_shares_vs_prev_quarter': st.column_config.NumberColumn(
-                                    'Change vs prev. quarter', format='%+,.0f')})
+                                    'Change vs prev. quarter (shares)', format='localized')})
+    own = r['inst_ownership_pct']
     st.caption(f"13F report date {date_str(r['holders_report_date'])}. Institutional ownership "
-               f"{pct(r['inst_ownership_pct'])} from {num(r['n_institutional_holders'], 0)} filers. Change is empty "
-               'when the filer\'s previous report was missing or incomplete.')
+               f"{'–' if pd.isna(own) else f'{own:.1f}%'} of shares outstanding, from "
+               f"{num(r['n_institutional_holders'], 0)} filers. Change is empty when the filer's previous report "
+               'was missing or incomplete.')
 
 
 # ----
@@ -439,10 +466,10 @@ def tab_executives(folder, cid) -> None:
                      'shares_owned_after']], hide_index=True, width='stretch',
                  column_config={'date': 'Trade date', 'filing_date': 'Filed', 'name': 'Name', 'role': 'Role',
                                 'type': 'Type', 'acquired_disposed': 'A/D',
-                                'shares': st.column_config.NumberColumn('Shares', format='%,.0f'),
+                                'shares': st.column_config.NumberColumn('Shares', format='localized'),
                                 'price': st.column_config.NumberColumn('Price', format='%.2f'),
-                                'value': st.column_config.NumberColumn('Value', format='%,.0f'),
-                                'shares_owned_after': st.column_config.NumberColumn('Owned after', format='%,.0f')})
+                                'value': st.column_config.NumberColumn('Value', format='compact'),
+                                'shares_owned_after': st.column_config.NumberColumn('Owned after', format='localized')})
     st.caption('Last 50 non-derivative transactions (Form 4). ⚠ = trade date after the filing date or in the future '
                '(typo in the filing).')
 
@@ -560,28 +587,7 @@ def tab_trials(folder, cid) -> None:
     c.metric('Recruiting / active', f"{int(t['overall_status'].isin(['RECRUITING', 'ACTIVE_NOT_RECRUITING', 'NOT_YET_RECRUITING', 'ENROLLING_BY_INVITATION']).sum()):,}")
     d.metric('With results', f"{int(t['has_results'].sum()):,}")
 
-    if not counts.empty:
-        years = sorted(counts['start_year'].unique())
-        yr = st.select_slider('Start years', options=years, value=(max(years[0], years[-1] - 15), years[-1]),
-                              key='trial_years') if len(years) > 1 else (years[0], years[0])
-        cc = counts[(counts['start_year'] >= yr[0]) & (counts['start_year'] <= yr[1])]
-        # total per year = distinct trials with a phase (a Phase 1/2 trial is one trial but two segments)
-        phased = t[t['phase_groups'].map(lambda v: v is not None and len(v) > 0) & t['start_year'].notna()]
-        totals = phased.groupby('start_year')['nct_id'].nunique()
-        totals = totals[(totals.index >= yr[0]) & (totals.index <= yr[1])]
-        fig = go.Figure()
-        for ph in (1, 2, 3, 4):
-            s = cc[cc['phase'] == ph]
-            fig.add_trace(go.Bar(x=s['start_year'], y=s['trials'], name=f'Phase {ph}', marker_color=PHASE_COLOURS[ph]))
-        fig.add_trace(go.Scatter(x=totals.index, y=cc.groupby('start_year')['trials'].sum().reindex(totals.index),
-                                 text=totals.values, mode='text', textposition='top center', showlegend=False,
-                                 hoverinfo='skip'))
-        fig.update_layout(barmode='stack', height=380, margin=dict(t=30, b=10), xaxis=dict(dtick=1, title='Start year'),
-                          yaxis_title='Trials', legend=dict(orientation='h', y=1.12))
-        st.plotly_chart(fig, width='stretch')
-        st.caption('Trials by start year (planned starts included) and phase; the number on top is the total of '
-                   'trials. A Phase 1/2 trial counts in both phases, so the segments can add up to more than the '
-                   'total. Trials without a phase (devices, observational) are not in the chart.')
+    trial_activity_chart(t, counts)
 
     f1, f2, f3 = st.columns(3)
     phases = f1.multiselect('Phase', [1, 2, 3, 4], key='trial_phase', format_func=lambda p: f'Phase {p}')
@@ -601,9 +607,11 @@ def tab_trials(folder, cid) -> None:
     st.dataframe(v[['link', 'title', 'phase', 'overall_status', 'start_date', 'primary_completion_date', 'enrollment',
                     'conditions', 'role', 'lead_sponsor']], hide_index=True, width='stretch', height=420,
                  column_config={'link': st.column_config.LinkColumn('NCT ID', display_text=r'https://clinicaltrials\.gov/study/(.*)'),
-                                'title': 'Title', 'phase': 'Phase', 'overall_status': 'Status', 'start_date': 'Start',
-                                'primary_completion_date': 'Primary completion',
-                                'enrollment': st.column_config.NumberColumn('Enrollment', format='%,d'),
+                                'title': 'Title', 'phase': 'Phase', 'overall_status': 'Status',
+                                'start_date': st.column_config.DateColumn('Start', format='YYYY-MM-DD'),
+                                'primary_completion_date': st.column_config.DateColumn('Primary completion',
+                                                                                      format='YYYY-MM-DD'),
+                                'enrollment': st.column_config.NumberColumn('Enrollment', format='localized'),
                                 'conditions': 'Conditions', 'role': 'Role', 'lead_sponsor': 'Lead sponsor'})
     with st.expander('Version history of a trial'):
         nid = st.selectbox('Trial', v['nct_id'].tolist(), key='trial_hist') if not v.empty else None
@@ -614,3 +622,40 @@ def tab_trials(folder, cid) -> None:
                          column_config={'version': 'Version', 'downloaded_at': 'Downloaded',
                                         'last_change_date': 'Changed on ClinicalTrials.gov', 'change_flag': 'Changed',
                                         'changed_sections': 'Changed modules'})
+
+
+def trial_activity_chart(t: pd.DataFrame, counts: pd.DataFrame) -> None:
+    """
+    Clinical trial activity of the last TRIAL_YEARS years: one column per start year, stacked by phase
+    (1-4, one colour each), the number of trials on top. Years without trials are shown as empty columns.
+    """
+    this_year = pd.Timestamp.today().year
+    years = list(range(this_year - TRIAL_YEARS + 1, this_year + 1))
+    mode = _theme()
+    colours, surface = PHASE_COLOURS[mode], SURFACE[mode]
+    cc = counts[counts['start_year'].isin(years)] if not counts.empty else counts
+    # total per year = distinct trials with a phase (a Phase 1/2 trial is one trial but two segments)
+    phased = t[t['phase_groups'].map(lambda v: v is not None and len(v) > 0) & t['start_year'].isin(years)]
+    totals = phased.groupby('start_year')['nct_id'].nunique().reindex(years, fill_value=0)
+    heights = (cc.groupby('start_year')['trials'].sum() if not cc.empty else pd.Series(dtype=float)) \
+        .reindex(years, fill_value=0)
+
+    st.subheader(f'Clinical trial activity, {years[0]}-{years[-1]}')
+    fig = go.Figure()
+    for ph in (1, 2, 3, 4):
+        s = cc[cc['phase'] == ph].set_index('start_year')['trials'].reindex(years, fill_value=0) \
+            if not cc.empty else pd.Series(0, index=years)
+        fig.add_trace(go.Bar(x=years, y=s.values, name=f'Phase {ph}', marker_color=colours[ph],
+                             marker_line=dict(width=2, color=surface),          # 2px gap between stacked segments
+                             hovertemplate=f'%{{x}} · Phase {ph}: %{{y}} trials<extra></extra>'))
+    fig.add_trace(go.Scatter(x=years, y=heights.values, text=[f'{v:,}' if v else '' for v in totals.values],
+                             mode='text', textposition='top center', showlegend=False, hoverinfo='skip'))
+    fig.update_layout(barmode='stack', bargap=0.25, height=400, margin=dict(t=40, b=10),
+                      xaxis=dict(tickmode='array', tickvals=years, title='Start year'),
+                      yaxis=dict(title='Trials', rangemode='tozero'),
+                      legend=dict(orientation='h', y=1.1, x=0, traceorder='normal'))
+    st.plotly_chart(fig, width='stretch')
+    st.caption(f'Trials by the year they started (this year includes planned starts) and phase, last {TRIAL_YEARS} '
+               'years. The number on top is the number of trials; a Phase 1/2 trial counts in both phases, so the '
+               'segments can add up to more. Trials without a phase (devices, observational) are not in the chart. '
+               'The company as lead sponsor or collaborator.')
