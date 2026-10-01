@@ -12,11 +12,9 @@ library(tidyr)
 # ---------------------------------------------------------------------------
 returns <- read_parquet("C:/Users/benel/Coding/Python/Thesis/_database/changepoint.parquet")
 
-# FIX 1: format() first, so a tz-aware timestamp can't shift the date by a day
 returns <- returns %>%
   mutate(date = as.Date(format(Date, "%Y-%m-%d"))) %>%
   select(-Date)
-
 returns_filtered <- returns %>%
   filter(date >= as.Date("1990-01-03"), date <= as.Date("2025-12-31"))
 
@@ -24,9 +22,8 @@ returns_filtered <- returns %>%
 # 2. Detection
 # ---------------------------------------------------------------------------
 detect_changepoints <- function(df, target_ticker, cpmType = "Mood",
-                                ARL0 = 10000, startup = 20) {
+                                ARL0 = 10000, startup = 21) {
   
-  # FIX 2: exact match. grep("VIX", fixed=TRUE) would also hit ^VIX3M, VIXY, etc.
   matched_col <- which(names(df) == target_ticker)
   
   if (length(matched_col) != 1L) {
@@ -51,17 +48,16 @@ detect_changepoints <- function(df, target_ticker, cpmType = "Mood",
 vix_cps  <- detect_changepoints(returns_filtered, "^VIX",  cpmType = "Mood", ARL0 = 10000)
 gspc_cps <- detect_changepoints(returns_filtered, "^GSPC", cpmType = "Mood", ARL0 = 10000)
 
-# sanity: the paper reports 27 change points in each series through Sep 2015
 cat("VIX  breaks:", nrow(vix_cps),
     "| through 2015-09-30:", sum(vix_cps$detection_date  <= as.Date("2015-09-30")), "\n")
 cat("GSPC breaks:", nrow(gspc_cps),
     "| through 2015-09-30:", sum(gspc_cps$detection_date <= as.Date("2015-09-30")), "\n")
 
-write_csv(vix_cps,  "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/vix_changepoint.csv")
-write_csv(gspc_cps, "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/gspc_changepoint.csv")
+write_csv(vix_cps,  "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/regimes_r/vix_changepoint.csv")
+write_csv(gspc_cps, "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/regimes_r/gspc_changepoint.csv")
 
 # ---------------------------------------------------------------------------
-# 3. Figure 4 replication
+# 3. Figures
 # ---------------------------------------------------------------------------
 create_regime_shading <- function(cp_dates, start_date, end_date) {
   boundaries <- sort(unique(c(start_date, cp_dates, end_date)))
@@ -97,7 +93,7 @@ ggplot() +
   theme_minimal() +
   labs(
     title    = "Log Returns with Alternating Regime Shading",
-    subtitle = "Grey bands highlight every second detected CPM regime (Mood Test)",
+    subtitle = "Grey bands highlight every second detected CPM regime",
     x = "Date",
     y = "Log Return"
   ) +

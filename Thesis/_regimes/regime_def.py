@@ -1,3 +1,4 @@
+
 """
 Central regime machinery, shared by every model (xgb / rf / lstm / ...).
 
@@ -27,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 _ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:                 # once, at import -- not per call
+if str(_ROOT) not in sys.path:
     sys.path.append(str(_ROOT))
 
 
@@ -38,6 +39,33 @@ if str(_ROOT) not in sys.path:                 # once, at import -- not per call
 DETECTOR = "none"       # "none" | "changepoint" | "hmm" | "wasserstein"
 REGIME   = None         # None | "calm" | "crisis"
 
+# Changepoint only: which break series feeds regime_probs.  Models do not set
+# this by hand; they loop over detector_series() and call use_series(s), so
+# one run produces the VIX (primary) and GSPC (robustness) results.
+CP_SERIES_ALL   = ('vix', 'gspc')
+CP_SERIES_VIX   = 'vix'
+CP_SERIES_GSPC  = 'gspc'
+
+
+def detector_series() -> list:
+    return list(CP_SERIES_ALL) if DETECTOR == "changepoint" else [None]
+
+
+def use_series(series) -> str:
+    """
+    Point regime_probs at `series` and reset the Channel-3 Schmitt-trigger
+    state so the second series does not inherit the first one's crisis flag.
+    Returns the tag to append to the output name ("" for non-changepoint).
+    """
+    global CP_SERIES
+    _crisis_state["on"] = False
+    if series is None:
+        return ""
+    if series not in CP_SERIES_ALL:
+        raise ValueError(f"[regime] unknown changepoint series {series!r}")
+    CP_SERIES = series
+    return f"_{series}"
+
 
 @lru_cache(maxsize=None)
 def _loader(name: str):
@@ -46,7 +74,7 @@ def _loader(name: str):
     its parquet read, since regime_probs is called several times per date.
     """
     if name == "changepoint":
-        from _regimes.changepoint.main import crisis_probs
+        from _regimes.changepoint.main_changepoint import crisis_probs
         return crisis_probs
     raise NotImplementedError(f"detector {name!r} not built yet")
 
@@ -58,10 +86,12 @@ def regime_probs(dates) -> pd.DataFrame:
     idx = pd.DatetimeIndex(dates)
     if DETECTOR == "none":
         return pd.DataFrame({"p_calm": 1.0, "p_crisis": 0.0}, index=idx)
-    out = _loader(DETECTOR)(idx).reindex(idx)[["p_calm", "p_crisis"]]
+    fn = _loader(DETECTOR)
+    raw = fn(idx, CP_SERIES) if DETECTOR == "changepoint" else fn(idx)
+    out = raw.reindex(idx)[["p_calm", "p_crisis"]]
     if out.isna().any().any():
         bad = out.index[out.isna().any(axis=1)]
-        raise ValueError(f"[regime] {DETECTOR}: no value for {len(bad)} date(s), "
+        raise ValueError(f"[regime] {DETECTOR}{'/' + CP_SERIES if DETECTOR == 'changepoint' else ''}: no value for {len(bad)} date(s), "
                          f"first {bad[0].date()} -- a NaN here would silently "
                          f"corrupt sample weights")
     return out
