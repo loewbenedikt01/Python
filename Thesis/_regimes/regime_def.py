@@ -1,4 +1,3 @@
-
 """
 Central regime machinery, shared by every model (xgb / rf / lstm / ...).
 
@@ -12,7 +11,7 @@ regime_probs(d) returns the probability that the holding period starting at d
 is in the high-volatility state, computed from data through d-1 only.
   * changepoint: current-regime estimate (EWMA vol of the active segment),
     used as the forecast for the holding period -- a persistence assumption.
-  * hmm (planned): one-step-ahead forecast xi_t' P from the filtered posterior.
+  * hmm: one-step-ahead forecast xi_t' P from the filtered posterior.
 States are always ordered so that 'crisis' is the high-vol state.
 
 With DETECTOR = "none" every channel collapses exactly to the un-regimed model
@@ -39,44 +38,80 @@ if str(_ROOT) not in sys.path:
 DETECTOR = "none"       # "none" | "changepoint" | "hmm" | "wasserstein"
 REGIME   = None         # None | "calm" | "crisis"
 
-# Changepoint only: which break series feeds regime_probs.  Models do not set
-# this by hand; they loop over detector_series() and call use_series(s), so
-# one run produces the VIX (primary) and GSPC (robustness) results.
-CP_SERIES_ALL   = ('vix', 'gspc')
-CP_SERIES_VIX   = 'vix'
-CP_SERIES_GSPC  = 'gspc'
+# Every detector writes one daily CSV per input series to
+#     _regimes/<detector>/regimes_final/<detector>_<series>.csv
+# with at least the columns date, p_calm, p_crisis, already shifted one day
+# (value at d uses data through d-1).  Models do not pick the series by hand:
+# they loop over detector_series() and call use_series(s), so one run
+# produces separate results per series, tagged _vix / _gspc in the output name.
+DETECTOR_SERIES = {
+    "changepoint": ("vix", "gspc"),     # VIX breaks primary, GSPC robustness
+    "hmm":         ("vix", "gspc"),
+    "wasserstein": ("vix", "gspc"),
+}
+SERIES = "vix"                          # set by use_series(), not by hand
+
+# Optional smoothing of the daily signal before it is read on a rebalance or
+# training date: exponentially weighted mean of p_crisis over past days, so a
+# single-day spike does not decide a whole holding period.  Causal (uses only
+# rows <= d, which are already shifted), applied the same way to every
+# detector.  None = raw daily value; 5 = half-life of 5 trading days.
+SMOOTH_HALFLIFE = None
 
 
 def detector_series() -> list:
-    return list(CP_SERIES_ALL) if DETECTOR == "changepoint" else [None]
+    """Series to run for the current DETECTOR ([None] for 'none')."""
+    if DETECTOR == "none":
+        return [None]
+    if DETECTOR not in DETECTOR_SERIES:
+        raise ValueError(f"[regime] unknown DETECTOR {DETECTOR!r}")
+    return list(DETECTOR_SERIES[DETECTOR])
 
 
 def use_series(series) -> str:
     """
     Point regime_probs at `series` and reset the Channel-3 Schmitt-trigger
-    state so the second series does not inherit the first one's crisis flag.
-    Returns the tag to append to the output name ("" for non-changepoint).
+    state so the next series does not inherit the previous one's crisis flag.
+    Returns the tag to append to the output name ("" for DETECTOR 'none').
     """
-    global CP_SERIES
+    global SERIES
     _crisis_state["on"] = False
     if series is None:
         return ""
-    if series not in CP_SERIES_ALL:
-        raise ValueError(f"[regime] unknown changepoint series {series!r}")
-    CP_SERIES = series
+    if series not in DETECTOR_SERIES.get(DETECTOR, ()):
+        raise ValueError(f"[regime] {DETECTOR}: unknown series {series!r}")
+    SERIES = series
     return f"_{series}"
 
 
+def _regime_file(detector: str, series: str) -> Path:
+    return _ROOT / "_regimes" / detector / "regimes_final" / f"{detector}_{series}.csv"
+
+
 @lru_cache(maxsize=None)
-def _loader(name: str):
-    """
-    Import each detector's accessor once.  The accessor itself should cache
-    its parquet read, since regime_probs is called several times per date.
-    """
-    if name == "changepoint":
-        from _regimes.changepoint.main_changepoint import crisis_probs
-        return crisis_probs
-    raise NotImplementedError(f"detector {name!r} not built yet")
+def _load(detector: str, series: str) -> pd.DataFrame:
+    """Read one detector/series file once per process."""
+    path = _regime_file(detector, series)
+    if not path.exists():
+        raise FileNotFoundError(f"[regime] {detector}/{series}: no regime file at {path}")
+    df = pd.read_csv(path, index_col="date", parse_dates=["date"]).sort_index()
+    missing = {"p_calm", "p_crisis"} - set(df.columns)
+    if missing:
+        raise KeyError(f"[regime] {path.name} lacks columns {sorted(missing)}")
+    df = df[["p_calm", "p_crisis"]].astype(float)
+    if not np.allclose(df.sum(axis=1), 1.0, atol=1e-6):
+        raise ValueError(f"[regime] {path.name}: p_calm + p_crisis != 1 on some rows")
+    return df
+
+
+@lru_cache(maxsize=None)
+def _signal(detector: str, series: str, halflife) -> pd.DataFrame:
+    """Daily p_calm/p_crisis, EW-smoothed if a half-life is given."""
+    df = _load(detector, series)
+    if halflife is None:
+        return df
+    pc = df["p_crisis"].ewm(halflife=halflife).mean().clip(0.0, 1.0)
+    return pd.DataFrame({"p_calm": 1.0 - pc, "p_crisis": pc}, index=df.index)
 
 
 def regime_probs(dates) -> pd.DataFrame:
@@ -86,12 +121,12 @@ def regime_probs(dates) -> pd.DataFrame:
     idx = pd.DatetimeIndex(dates)
     if DETECTOR == "none":
         return pd.DataFrame({"p_calm": 1.0, "p_crisis": 0.0}, index=idx)
-    fn = _loader(DETECTOR)
-    raw = fn(idx, CP_SERIES) if DETECTOR == "changepoint" else fn(idx)
-    out = raw.reindex(idx)[["p_calm", "p_crisis"]]
+    src = _signal(DETECTOR, SERIES, SMOOTH_HALFLIFE)
+    # forward-fill to the last regime date <= d, so non-trading days resolve
+    out = src.reindex(idx, method="ffill")
     if out.isna().any().any():
         bad = out.index[out.isna().any(axis=1)]
-        raise ValueError(f"[regime] {DETECTOR}{'/' + CP_SERIES if DETECTOR == 'changepoint' else ''}: no value for {len(bad)} date(s), "
+        raise ValueError(f"[regime] {DETECTOR}/{SERIES}: no value for {len(bad)} date(s), "
                          f"first {bad[0].date()} -- a NaN here would silently "
                          f"corrupt sample weights")
     return out

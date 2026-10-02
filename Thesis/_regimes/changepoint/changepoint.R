@@ -10,7 +10,7 @@ library(tidyr)
 # ---------------------------------------------------------------------------
 # 1. Load and clean
 # ---------------------------------------------------------------------------
-returns <- read_parquet("C:/Users/benel/Coding/Python/Thesis/_database/changepoint.parquet")
+returns <- read_parquet("C:/Users/benel/Coding/Python/Thesis/_database/regimes_data_log.parquet")
 
 returns <- returns %>%
   mutate(date = as.Date(format(Date, "%Y-%m-%d"))) %>%
