@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  2 OCT 2026 17:27
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  2 OCT 2026 20:03
  system commands enabled.
 **c:/Users/benel/Coding/Python/Thesis/_latex/paper
 (c:/Users/benel/Coding/Python/Thesis/_latex/paper.tex
@@ -187,7 +187,12 @@ LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 (Font)                  OT1/cmtt/m/n --> TU/lmtt/b/n on input line 35.
  [1
 
-{c:/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2] [1] (./paper.aux)
+{c:/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2] [1]
+Underfull \hbox (badness 10000) in paragraph at lines 91--95
+
+ []
+
+[2] (./paper.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
@@ -199,15 +204,15 @@ Here is how much of LuaTeX's memory you used:
  100000,552014 words of node,token memory allocated
  411 words of node memory still in use:
    3 hlist, 1 vlist, 1 rule, 2 glue, 3 kern, 1 glyph, 4 attribute, 49 glue_spec, 4 attribute_list, 1 write nodes
-   avail lists: 2:40,3:24,4:5,5:27,6:6,7:1310,9:36,10:4,11:120
+   avail lists: 2:40,3:26,4:5,5:27,6:6,7:1310,9:36,10:4,11:120
  25503 multiletter control sequences out of 65536+600000
  32 fonts using 10413135 bytes
  73i,5n,92p,264b,231s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <c:/Windows/Fonts/arial.ttf><c:/Windows/Fonts/arialbd.ttf>
-Output written on paper.pdf (3 pages, 65664 bytes).
+Output written on paper.pdf (4 pages, 68062 bytes).
 
-PDF statistics: 28 PDF objects out of 1000 (max. 8388607)
- 16 compressed objects within 1 object stream
+PDF statistics: 31 PDF objects out of 1000 (max. 8388607)
+ 18 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 1048576)
  1 words of extra memory for PDF output out of 10000 (max. 100000000)
 

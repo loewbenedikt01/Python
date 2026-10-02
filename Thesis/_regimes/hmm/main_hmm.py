@@ -8,7 +8,7 @@ One model per series:
     vix   VIX log changes
     gspc  S&P 500 log returns      (the paper's setting: index log returns)
 Input is the same log-return parquet the changepoint detector uses
-(_database/changepoint.parquet, written by changepoint/data_prep.py).
+(_database/regimes_data_log.parquet, written by changepoint/data_prep.py).
 
 Procedure (see hmm_core.py for the equations):
   1. initialisation: the weighted likelihood is maximised numerically on the
@@ -54,7 +54,7 @@ WINDOW      = 10 * N_EFF    # observations in the weighted score; older weights 
                             # (Nystrup et al. 2016, p. 6: 2,500 observations for N_eff = 250)
 
 HERE      = Path(__file__).resolve().parent
-DATA_PATH = HERE.parents[1] / "_database" / "changepoint.parquet"
+DATA_PATH = HERE.parents[1] / "_database" / "regimes_data_log.parquet"
 OUT_DIR   = HERE / "regimes_final"
 
 

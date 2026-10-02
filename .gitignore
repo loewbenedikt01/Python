@@ -12,6 +12,9 @@ Database/data/*
 Database/data/review/*
 !Database/data/review/equities_changes.csv
 
+# LaTeX (thesis paper): not in git
+Thesis/_latex/
+
 # Python
 __pycache__/
 *.pyc
