@@ -17,11 +17,12 @@ Walk-forward, refit at every rebalance date `d` on point-in-time data:
             [0 | 10 | 20]
     Do not run each Mode with different Transaction costs. Calculate the Transaction costs impact across a small mode and then further document.
     
-    Possible Run Modes:
-        DETECTOR = "none" + REGIME_WEIGHTS = False + REGIME_FEATURES = False + REGIME_THETA = False
-        DETECTOR = "hmm" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
-        DETECTOR = "wasserstein" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
-        DETECTOR = "changepoint" + REGIME_WEIGHTS = True + REGIME_FEATURES = False + REGIME_THETA = False
+    Two run options (set in the Regime block below):
+        DETECTOR = "none"                 baseline: no regime information
+        DETECTOR = <detector> + SERIES    regime run: the model learns with the interaction
+                                          features (rank - 0.5) * p_crisis
+    SERIES per detector: changepoint "vix" | "gspc", hmm "gspc" | "vix",
+    wasserstein "gspc_vix" | "gspc".  One detector/series per run.
 """
 
 import itertools
@@ -73,26 +74,8 @@ FREQUENCIES = [
 # Regime implementation
 # ----
 
-regime_def.DETECTOR            = "none"   # "none" | "hmm" | "wasserstein" | "changepoint"
-regime_def.REGIME              = None     # None | "calm" | "crisis"
-regime_def.USE_REGIME_WEIGHTS  = False    # Channel 1: sample weights
-regime_def.USE_REGIME_FEATURES = False    # Channel 2: interaction features
-regime_def.USE_REGIME_THETA    = False    # Channel 3: rank sharpness
-
-DETECTOR             = regime_def.DETECTOR
-REGIME               = regime_def.REGIME
-USE_REGIME_WEIGHTS   = regime_def.USE_REGIME_WEIGHTS
-USE_REGIME_FEATURES  = regime_def.USE_REGIME_FEATURES
-USE_REGIME_THETA     = regime_def.USE_REGIME_THETA
-
-regime_probs         = regime_def.regime_probs
-_regime_label        = regime_def._regime_label
-_obs_weights         = regime_def._obs_weights
-_add_regime_features = regime_def._add_regime_features
-_theta               = regime_def._theta
-_crisis_state        = regime_def._crisis_state
-_regfeat_log         = regime_def._regfeat_log
-
+regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
 
 # ----
 # Weight box  (water-filling projection onto {lo <= w_i <= hi, sum w = 1})
@@ -204,13 +187,13 @@ def _rank_ic(y_true, y_pred, dates) -> float:
     return float(np.nanmean(ics)) if ics else np.nan
 
 
-def _fit_one(X_tr, y_tr, params: dict, seed: int, sw=None) -> XGBRegressor:
+def _fit_one(X_tr, y_tr, params: dict, seed: int) -> XGBRegressor:
     m = _make_model(params, seed)
-    m.fit(X_tr, y_tr, sample_weight=sw, verbose=False)
+    m.fit(X_tr, y_tr, verbose=False)
     return m
 
 
-def _train(X_tr, y_tr, X_val, y_val, month_w=None):
+def _train(X_tr, y_tr, X_val, y_val):
     """
     Fit every (grid point, seed) in GRID x BASE_SEED and keep them all — no
     search, no selection.  Inference averages the raw predictions across the
@@ -219,17 +202,10 @@ def _train(X_tr, y_tr, X_val, y_val, month_w=None):
     full XGB_FIXED['n_estimators'] rounds (no early stopping), so there is no
     per-model tree count to record.  Returns (models, ensemble val_r2, ensemble
     val_ic, mean feature importance).
-
-    `month_w` (Channel 1): per training-month observation weights, expanded to
-    rows and passed through as sample_weight.  All-ones -> passed as None so the
-    fit is bit-identical to unweighted training.
     """
-    sw = None
-    if month_w is not None and not np.allclose(month_w.to_numpy(), 1.0):
-        sw = month_w.reindex(X_tr.index.get_level_values("date")).to_numpy()
 
     models = Parallel(n_jobs=-1, backend="threading")(
-        delayed(_fit_one)(X_tr, y_tr, p, seed, sw)
+        delayed(_fit_one)(X_tr, y_tr, p, seed)
         for seed in BASE_SEED for p in GRID
     )
 
@@ -290,10 +266,7 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     fwd_stack.index = fwd_stack.index.set_names(["date", "ticker"])
     fwd_stack = fwd_stack - fwd_stack.groupby(level="date").transform("mean")
     resolve = _resolve_dates(prices, train_firsts, h)
-    regime = _regime_label(train_firsts) if REGIME is not None else None
-    min_tr = 24 if REGIME is not None else TRAINING_MONTHS_XGB
-    _crisis_state["on"] = False
-    _regfeat_log["done"] = False
+    min_tr = TRAINING_MONTHS_XGB
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]
@@ -313,8 +286,6 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     for d in reb_dates:
         keep = ((train_firsts < d)
                 & resolve.reindex(train_firsts).lt(d).to_numpy())
-        if REGIME is not None:
-            keep = keep & regime.reindex(train_firsts).eq(REGIME).to_numpy()
         pit = train_firsts[keep]
 
         if WINDOW_MODE == "latest":
@@ -349,7 +320,7 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         except ValueError:
             reject[d] = "no feature rows in window"
             continue
-        panel = _add_regime_features(panel)
+        panel = regime_def.add_regime_features(panel)       # regime run only
         feat_cols = list(panel.columns)
         panel_dates = panel.index.get_level_values("date")
         if d not in panel_dates:
@@ -367,21 +338,16 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             reject[d] = f"universe {len(uni)} < 2"
             continue
 
-        month_w = _obs_weights(tr_months, d)
-        n_eff = (float(month_w.sum() ** 2 / (month_w ** 2).sum())
-                 if month_w is not None else float(len(tr_months)))
-
         t0 = time.time()
-        models, val_r2, val_ic, importance = _train(X_tr, y_tr, X_va, y_va, month_w)
+        models, val_r2, val_ic, importance = _train(X_tr, y_tr, X_va, y_va)
         dt = time.time() - t0
         elapsed = time.time() - t_start
         eta = elapsed / i * (len(todo) - i)
 
-        th = _theta(d)
         Xd = panel.loc[d].reindex(uni)[feat_cols]
         pred = pd.Series(_predict(models, Xd), index=uni)
         r = pred.rank(pct=True).to_numpy()
-        w = _apply_box(r if th == 1.0 else r ** th, *_weight_box(len(uni)))
+        w = _apply_box(r, *_weight_box(len(uni)))
 
         rows[d] = pd.Series(w, index=uni)
         preds[d] = pred
@@ -389,14 +355,9 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         r2_sel[d] = val_r2
         ic_val[d] = val_ic
 
-        reg_tag = ""
-        if month_w is not None:
-            reg_tag = f" n_eff={n_eff:.0f}/{len(tr_months)}"
-        if th != 1.0:
-            reg_tag += f" theta={th:.2f}"
         print(f"[xgb] {frequency} {d.date()}  {i:>3}/{len(todo)}  "
               f"train={len(tr_months)}mo/{len(y_tr)}r val={len(va_months)}mo names={len(uni)}  "
-              f"{len(models)} models  {_fmt(dt)}  valIC={val_ic:+.3f}{reg_tag}  "
+              f"{len(models)} models  {_fmt(dt)}  valIC={val_ic:+.3f}  "
               f"elapsed {_fmt(elapsed)} / ETA {_fmt(eta)}", flush=True)
 
     targets = pd.DataFrame(rows).T
@@ -463,19 +424,6 @@ def xgb_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 # ----
 
 def main() -> None:
-    stub = (DETECTOR == "none" and
-            float(regime_probs(pd.DatetimeIndex([pd.Timestamp(START_DATE)]))["p_crisis"].iloc[0]) == 0.0)
-    if REGIME is not None and stub:
-        raise NotImplementedError(
-            f"REGIME = {REGIME!r} (hard-split spec) but DETECTOR = 'none', so regime_probs() "
-            "is the stub (p_crisis = 0 everywhere) and every month labels 'calm'. "
-            "Pick a real DETECTOR before running a hard split."
-        )
-    if stub and (USE_REGIME_WEIGHTS or USE_REGIME_FEATURES or USE_REGIME_THETA):
-        print("[xgb] NOTE: regime channels enabled but DETECTOR='none' -> stub p_crisis=0; "
-              "this run must reproduce the un-regimed result bit-for-bit (regression test).",
-              flush=True)
-
     prices = load_prices()
     db = load_db()
 
@@ -486,7 +434,7 @@ def main() -> None:
     for frequency in FREQUENCIES:
         targets, n_dates, diagnostics = xgb_targets(db, prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
-        name = f"xgb/{MODEL_NAME}_{frequency.lower()}"
+        name = f"xgb/{MODEL_NAME}{regime_def.run_tag()}_{frequency.lower()}"
 
         export.build_report(
             name,

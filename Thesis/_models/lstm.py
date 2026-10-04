@@ -12,6 +12,14 @@ Walk-forward, refit at every rebalance date `d` on point-in-time data:
     box.  The validation block only reports ensemble val R^2 / rank IC.
 
 Reported specification count is 1 (the ensemble).  Output tree: _output/rf/.
+
+    Two run options (set in the Regime block below):
+        DETECTOR = "none"                 baseline: no regime information
+        DETECTOR = <detector> + SERIES    regime run: the net learns with the interaction
+                                          features (rank - 0.5) * p_crisis and raw
+                                          p_crisis as an extra input channel
+    SERIES per detector: changepoint "vix" | "gspc", hmm "gspc" | "vix",
+    wasserstein "gspc_vix" | "gspc".  One detector/series per run.
 """
 
 import itertools
@@ -77,38 +85,21 @@ FREQUENCIES = [
 # Regime implementation
 # ----
  
-regime_def.DETECTOR            = "none"   # "none" | "hmm" | "wasserstein" | "changepoint"
-regime_def.REGIME              = None     # None | "calm" | "crisis"
-regime_def.USE_REGIME_WEIGHTS  = False    # Channel 1: sample weights
-regime_def.USE_REGIME_FEATURES = True     # Channel 2: interaction features
-regime_def.USE_REGIME_THETA    = True     # Channel 3: rank sharpness
- 
-# LSTM-only extra: raw p_crisis as an input channel per timestep.  A neural net
-# can learn interactions itself and p_crisis varies along the sequence.  Only
-# active with a real detector: even an all-zero column would change the weight
-# initialisation draws and break the stub regression test.
-USE_PCRISIS_INPUT = True
- 
-DETECTOR             = regime_def.DETECTOR
-REGIME               = regime_def.REGIME
-USE_REGIME_WEIGHTS   = regime_def.USE_REGIME_WEIGHTS
-USE_REGIME_FEATURES  = regime_def.USE_REGIME_FEATURES
-USE_REGIME_THETA     = regime_def.USE_REGIME_THETA
- 
-regime_probs         = regime_def.regime_probs
-_regime_label        = regime_def._regime_label
-_obs_weights         = regime_def._obs_weights
-_add_regime_features = regime_def._add_regime_features
-_theta               = regime_def._theta
-_crisis_state        = regime_def._crisis_state
-_regfeat_log         = regime_def._regfeat_log
+regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
  
  
 def _add_pcrisis(panel: pd.DataFrame) -> pd.DataFrame:
-    if not USE_PCRISIS_INPUT or DETECTOR == "none":
+    """
+    Regime run only: raw p_crisis as an input channel per timestep.  A neural
+    net can learn interactions itself and p_crisis varies along the sequence.
+    Not added for the baseline: even an all-zero column would change the weight
+    initialisation draws.
+    """
+    if regime_def.DETECTOR == "none":
         return panel
     dates = panel.index.get_level_values("date")
-    pc = regime_probs(dates.unique())["p_crisis"].reindex(dates).to_numpy()
+    pc = regime_def.regime_probs(dates.unique())["p_crisis"].reindex(dates).to_numpy()
     return panel.assign(p_crisis=pc)
  
  
@@ -260,7 +251,7 @@ def _build_sequences(by_date: dict, target_months, cols: list):
             pd.MultiIndex.from_tuples(keys, names=["date", "ticker"]))
  
  
-def _fit_predict(X_tr, y_tr, sw, X_va, X_d):
+def _fit_predict(X_tr, y_tr, X_va, X_d):
     """
     Fit every (grid point, seed), predict validation and d immediately, discard
     the net.  Target is scaled by its training sd (ranks are invariant to that)
@@ -276,7 +267,7 @@ def _fit_predict(X_tr, y_tr, sw, X_va, X_d):
             tf.keras.backend.clear_session()
             tf.keras.utils.set_random_seed(int(seed))
             m = _make_model(p["units"], p["dropout"], X_tr.shape[2])
-            m.fit(X_tr, y_fit, sample_weight=sw,
+            m.fit(X_tr, y_fit,
                   epochs=int(LSTM_FIXED["epochs"]),
                   batch_size=int(LSTM_FIXED["batch_size"]),
                   shuffle=True, verbose=0)
@@ -326,9 +317,11 @@ def _state(frequency: str):
     return _STATE[frequency]
  
  
-def _date_job(frequency: str, d, tr_months, va_months) -> dict:
+def _date_job(frequency: str, d, tr_months, va_months, regime=("none", None)) -> dict:
     """Everything for one rebalance date up to the raw prediction.
     Returns a plain dict (picklable); weights are built in the main process."""
+    # a fresh worker starts from regime_def's defaults; re-select the run's choice
+    regime_def.DETECTOR, regime_def.SERIES = regime
     t0 = time.time()
     db, fwd_stack, train_firsts = _state(frequency)
     tf_months = train_firsts.to_period("M")
@@ -342,7 +335,7 @@ def _date_job(frequency: str, d, tr_months, va_months) -> dict:
         panel = features_panel(db, want, universe=uni_year)
     except ValueError:
         return {"d": d, "reject": "no feature rows in window"}
-    panel = _add_pcrisis(_add_regime_features(panel))
+    panel = _add_pcrisis(regime_def.add_regime_features(panel))     # regime run only
     cols = list(panel.columns)
     if d not in panel.index.get_level_values("date"):
         return {"d": d, "reject": "no feature panel row at d"}
@@ -368,14 +361,7 @@ def _date_job(frequency: str, d, tr_months, va_months) -> dict:
     if len(uni) < 2:
         return {"d": d, "reject": f"universe {len(uni)} < 2"}
  
-    month_w = _obs_weights(tr_months, d)
-    sw = None
-    if month_w is not None and not np.allclose(month_w.to_numpy(), 1.0):
-        sw = month_w.reindex(k_tr.get_level_values("date")).to_numpy()
-    n_eff = (float(month_w.sum() ** 2 / (month_w ** 2).sum())
-             if month_w is not None else np.nan)
- 
-    val_pred, d_pred, imp = _fit_predict(X_tr, y_tr, sw, X_va, X_d)
+    val_pred, d_pred, imp = _fit_predict(X_tr, y_tr, X_va, X_d)
  
     if len(y_va):
         yv = y_va.to_numpy()
@@ -391,7 +377,7 @@ def _date_job(frequency: str, d, tr_months, va_months) -> dict:
     pred = pred.fillna(pred.median())
  
     return {"d": d, "pred": pred, "imp": pd.Series(imp, index=cols),
-            "val_r2": val_r2, "val_ic": val_ic, "n_eff": n_eff, "n_filled": n_filled,
+            "val_r2": val_r2, "val_ic": val_ic, "n_filled": n_filled,
             "n_tr": len(tr_months), "n_va": len(va_months), "n_seq": len(y_tr),
             "dt": time.time() - t0}
  
@@ -408,10 +394,7 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
  
     fwd = _forward_returns(prices, h)
     resolve = _resolve_dates(prices, train_firsts, h)
-    regime = _regime_label(train_firsts) if REGIME is not None else None
-    min_tr = 24 if REGIME is not None else TRAINING_MONTHS_LSTM
-    _crisis_state["on"] = False
-    _regfeat_log["done"] = False
+    min_tr = TRAINING_MONTHS_LSTM
  
     rows:  dict[pd.Timestamp, pd.Series] = {}
     preds: dict[pd.Timestamp, pd.Series] = {}
@@ -427,8 +410,6 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     for d in reb_dates:
         keep = ((train_firsts < d)
                 & resolve.reindex(train_firsts).lt(d).to_numpy())
-        if REGIME is not None:
-            keep = keep & regime.reindex(train_firsts).eq(REGIME).to_numpy()
         pit = train_firsts[keep]
  
         if WINDOW_MODE == "latest":
@@ -459,7 +440,8 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     t_start = time.time()
     with ProcessPoolExecutor(max_workers=N_WORKERS, max_tasks_per_child=1,
                              initializer=_worker_init) as ex:
-        futs = {ex.submit(_date_job, frequency, d, tr, va): d for d, tr, va in todo}
+        regime = (regime_def.DETECTOR, regime_def.SERIES)
+        futs = {ex.submit(_date_job, frequency, d, tr, va, regime): d for d, tr, va in todo}
         for k, f in enumerate(as_completed(futs), 1):
             r = f.result()
             results[r["d"]] = r
@@ -470,20 +452,18 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             else:
                 msg = (f"train={r['n_tr']}mo/{r['n_seq']}seq val={r['n_va']}mo  "
                        f"{_fmt(r['dt'])}  valIC={r['val_ic']:+.3f}"
-                       + (f" n_eff={r['n_eff']:.0f}" if np.isfinite(r["n_eff"]) else "")
                        + (f" filled={r['n_filled']}" if r["n_filled"] else ""))
             print(f"[lstm] {frequency} {r['d'].date()}  {k:>3}/{len(todo)}  {msg}  "
                   f"elapsed {_fmt(elapsed)} / ETA {_fmt(eta)}", flush=True)
  
-    # ---- pass 2b: weights in date order (theta is stateful)
+    # ---- pass 2b: weights in date order
     for d in sorted(results):
         r = results[d]
         if "reject" in r:
             reject[d] = r["reject"]; continue
         pred = r["pred"]
-        th = _theta(d)
         rk = pred.rank(pct=True).to_numpy()
-        w = _apply_box(rk if th == 1.0 else rk ** th, *_weight_box(len(pred)))
+        w = _apply_box(rk, *_weight_box(len(pred)))
         rows[d] = pd.Series(w, index=pred.index)
         preds[d] = pred
         imp_rows[d] = r["imp"]
@@ -548,16 +528,6 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 # ----
  
 def main() -> None:
-    stub = (DETECTOR == "none" and
-            float(regime_probs(pd.DatetimeIndex([pd.Timestamp(START_DATE)]))["p_crisis"].iloc[0]) == 0.0)
-    if REGIME is not None and stub:
-        raise NotImplementedError(
-            f"REGIME = {REGIME!r} (hard-split spec) but DETECTOR = 'none'. "
-            "Pick a real DETECTOR before running a hard split.")
-    if stub and (USE_REGIME_WEIGHTS or USE_REGIME_FEATURES or USE_REGIME_THETA):
-        print("[lstm] NOTE: regime channels enabled but DETECTOR='none' -> stub; "
-              "this run must reproduce the un-regimed result bit-for-bit.", flush=True)
- 
     prices = load_prices()
     db = load_db()
  
@@ -568,8 +538,8 @@ def main() -> None:
     for frequency in FREQUENCIES:
         targets, n_dates, diagnostics = lstm_targets(db, prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
-        name = f"lstm/{MODEL_NAME}_{frequency.lower()}"
- 
+        name = f"lstm/{MODEL_NAME}{regime_def.run_tag()}_{frequency.lower()}"
+
         export.build_report(
             name,
             res.log_returns,
@@ -582,7 +552,7 @@ def main() -> None:
                 **diagnostics,
             },
         )
- 
+
         ic = np.nanmean(list(diagnostics["spearman_p"]["rho"])) if len(diagnostics["spearman_p"]) else np.nan
         print(f"{name:40s} {len(res.log_returns):5d} days  "
               f"cum {np.expm1(res.log_returns.sum()):8.1%}  "

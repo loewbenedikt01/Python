@@ -12,28 +12,13 @@ Algorithm, over that year's investable universe:
   3. quasi-diagonalisation
   4. recursive bisection by inverse cluster variance
 
-Regime conditioning
--------------------
-HRP consumes nothing but a covariance matrix, so the regime enters entirely
-through Sigma^.  The moment estimator below is byte-identical to the one in
-mvo.py: fed the same COV_METHOD / MOMENT_MODE / lookback, both models receive
-the same Sigma^, so any gap between them is the allocation rule alone.
-Keep the two copies in sync if either is edited.
-
-  MOMENT_MODE = "pooled" | "weighted" | "mixture"   (see the Moments section below)
-
-  USE_REGIME        shrink toward the inverse-variance portfolio as crisis
-                    probability rises:
-                        w = (1-a) w_hrp + a w_ivp,   a = p_crisis * A
-                    HRP has no expected-return input, so the analogue of MVO's
-                    "blend toward minimum variance" is to lean on variances
-                    alone and away from the clustering -- which is precisely the
-                    structure that degrades when correlations converge in a
-                    crisis.  Both portfolios are long-only and sum to 1, and
-                    that set is convex, so the blend stays feasible; the box
-                    projection is applied afterwards regardless.
-
-With DETECTOR = "none" every path reduces to the pooled baseline.
+Regime run
+----------
+HRP in calm; when p_crisis > regime_def.CRISIS_THRESHOLD the portfolio
+switches to inverse-variance weights.  HRP has no expected-return input, so
+the defensive analogue of MVO's switch to minimum variance is to drop the
+clustering and allocate on variances alone: the correlation structure HRP
+relies on is what degrades when correlations converge in a crisis.
 
 -> Before Running: 
     Things to adjust
@@ -41,20 +26,11 @@ With DETECTOR = "none" every path reduces to the pooled baseline.
             [0 | 10 | 20]
     Do not run each Mode with different Transaction costs. Calculate the Transaction costs impact across a small mode and then further document.
     
-    Possible Run Modes:
-        DETECTOR = "none" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "pooled" + USE_REGIME = True
-        DETECTOR = "hmm" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "hmm" + MOMENT_MODE = "mixture" + USE_REGIME = False
-        DETECTOR = "wasserstein" + MOMENT_MODE = "pooled" + USE_REGIME = True
-        DETECTOR = "wasserstein" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "wasserstein" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "wasserstein" + MOMENT_MODE = "mixture" + USE_REGIME = False
-        DETECTOR = "changepoint" + MOMENT_MODE = "pooled" + USE_REGIME = True
-        DETECTOR = "changepoint" + MOMENT_MODE = "weighted" + USE_REGIME = False
-        DETECTOR = "changepoint" + MOMENT_MODE = "mixture" + USE_REGIME = True
-        DETECTOR = "changepoint" + MOMENT_MODE = "mixture" + USE_REGIME = False
+    Two run options (set in the Regime block below):
+        DETECTOR = "none"                 baseline: HRP at every rebalance
+        DETECTOR = <detector> + SERIES    regime run: HRP in calm, inverse-variance in crisis
+    SERIES per detector: changepoint "vix" | "gspc", hmm "gspc" | "vix",
+    wasserstein "gspc_vix" | "gspc".  One detector/series per run.
 """
 
 
@@ -96,21 +72,10 @@ LINKAGE    = "ward"             # "single" | "ward" | "average"
 # Regime implementation
 # ----
 
-regime_def.DETECTOR = "none"    # "none" | "changepoint" | "hmm" | "wasserstein"
+regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
 
-MOMENT_MODE     = "pooled"      # "pooled" | "weighted" | "mixture"
-USE_REGIME_RISK = False         # blend toward inverse-variance in crisis
-RISK_MAX_SHRINK = 0.50          # a = p_crisis * RISK_MAX_SHRINK
-
-DETECTOR     = regime_def.DETECTOR
-regime_probs = regime_def.regime_probs
-WEIGHT_FLOOR = regime_def.REGIME_WEIGHT_FLOOR      # same floor as MVO / the ML models
-
-tag = {"pooled": "p", "weighted": "w", "mixture": "m"}[MOMENT_MODE]
-tag += "_R" if USE_REGIME_RISK else ""
-det = "" if DETECTOR == "none" else f"{DETECTOR}"
-
-MODEL_NAME = f"mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}_{det}_{tag}"          # change per run; costs live in config.py
+MODEL_NAME = f"hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}{regime_def.run_tag()}"   # costs live in config.py
 
 FREQUENCIES = [
     "Monthly",
@@ -120,7 +85,7 @@ FREQUENCIES = [
 
 
 # ----
-# Moments  (identical to mvo.py -- keep the two in sync so HRP and MVO can be
+# Moments  (identical to mvo.py -- keep the two in sync so HRP and MVO are
 # fed the same Sigma^; then any gap between them is the allocation rule alone)
 # ----
 
@@ -142,53 +107,6 @@ def _moments(win: pd.DataFrame, w: np.ndarray | None = None):
     else:
         cov = Xc.T @ Xc / (w.sum() - 1.0)
     return mu, cov
-
-
-def _n_eff(w: np.ndarray) -> float:
-    w = np.asarray(w, float)
-    return float(w.sum() ** 2 / (w ** 2).sum())
-
-
-def _similarity(p_hist: np.ndarray, p_now: float) -> np.ndarray:
-    """Per-day resemblance to the regime expected at d, floored as in regime_def."""
-    sim = p_hist * p_now + (1.0 - p_hist) * (1.0 - p_now)
-    return WEIGHT_FLOOR + (1.0 - WEIGHT_FLOOR) * sim
-
-
-def _regime_moments(win: pd.DataFrame, p_hist: np.ndarray, p_now: float):
-    """
-    Dispatch on MOMENT_MODE; returns (mu, Sigma, n_eff_report).
-    A state with too little weight in the window falls back to pooled moments
-    for that state, so a crisis-free window cannot produce a degenerate crisis
-    covariance.  With p_hist == 0 every mode returns the pooled moments.
-    """
-    if MOMENT_MODE == "pooled" or not np.any(p_hist):
-        mu, cov = _moments(win)
-        return mu, cov, float(len(win))
-
-    if MOMENT_MODE == "weighted":
-        w = _similarity(p_hist, p_now)
-        mu, cov = _moments(win, w)
-        return mu, cov, _n_eff(w)
-
-    if MOMENT_MODE != "mixture":
-        raise ValueError(f"unknown MOMENT_MODE {MOMENT_MODE!r}")
-
-    pis   = np.array([1.0 - p_now, p_now])
-    masks = [1.0 - p_hist, p_hist]
-    mu_pool, cov_pool = _moments(win)
-    mus, covs, neffs = [], [], []
-    for pk in masks:
-        if pk.sum() <= 0 or _n_eff(pk) < MIN_OBS:
-            mus.append(mu_pool); covs.append(cov_pool); neffs.append(np.nan)
-            continue
-        m, c = _moments(win, pk)
-        mus.append(m); covs.append(c); neffs.append(_n_eff(pk))
-
-    mu = sum(pi * m for pi, m in zip(pis, mus))
-    cov = sum(pi * (c + np.outer(m - mu, m - mu))
-              for pi, m, c in zip(pis, mus, covs))
-    return mu, cov, float(np.nanmax(neffs))
 
 
 # ----
@@ -302,14 +220,7 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
         if len(keep) < 2 or len(win) < MIN_OBS:
             continue
 
-        # daily regime probabilities over the estimation window, plus at d
-        if DETECTOR == "none":
-            p_hist, p_now = np.zeros(len(win)), 0.0
-        else:
-            p_hist = regime_probs(win.index)["p_crisis"].to_numpy()
-            p_now  = float(regime_probs([d])["p_crisis"].iloc[0])
-
-        _, cov_d, ne = _regime_moments(win, p_hist, p_now)
+        _, cov_d = _moments(win)
         cov = cov_d * h
 
         sd = np.sqrt(np.diag(cov))
@@ -317,19 +228,16 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
             continue
         corr = cov / np.outer(sd, sd)
 
-        w = _hrp_weights(cov, corr, LINKAGE)
+        # regime run: inverse-variance when the holding period is classed crisis
+        p_now  = regime_def.p_crisis(d)
+        crisis = regime_def.in_crisis(d)
+        w = _ivp_weights(cov) if crisis else _hrp_weights(cov, corr, LINKAGE)
         if not np.all(np.isfinite(w)) or w.sum() <= 0:
             continue
 
-        # regime-dependent risk: lean on variances, away from the clustering
-        a = 0.0
-        if USE_REGIME_RISK and DETECTOR != "none" and p_now > 0:
-            a = float(p_now * RISK_MAX_SHRINK)
-            w = (1.0 - a) * w + a * _ivp_weights(cov)
-
         w = _apply_box(w, *_weight_box(len(keep)))
         rows[d] = pd.Series(w, index=keep)
-        diag[d] = {"p_crisis": p_now, "n_eff": ne, "shrink": a,
+        diag[d] = {"p_crisis": p_now, "crisis": crisis,
                    "vol_ann": float(np.sqrt(np.diag(cov).mean() * 252 / h)),
                    "avg_corr": float(corr[np.triu_indices_from(corr, 1)].mean())}
 
@@ -342,13 +250,7 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
 # ----
 
 def main() -> None:
-    if DETECTOR == "none" and (MOMENT_MODE != "pooled" or USE_REGIME_RISK):
-        print("[hrp] NOTE: regime channels set but DETECTOR='none' -> this run "
-              "must reproduce the pooled baseline bit-for-bit (regression test).",
-              flush=True)
-
     prices = load_prices()
-
     for frequency in FREQUENCIES:
         targets, n_dates, diag = hrp_targets(prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
@@ -366,14 +268,11 @@ def main() -> None:
             },
         )
 
-        extra = ""
-        if DETECTOR != "none" and len(diag):
-            extra = (f"  mean p_crisis {diag['p_crisis'].mean():.2f}"
-                     f"  min n_eff {diag['n_eff'].min():.0f}")
+        n_cr = int(diag["crisis"].sum()) if len(diag) else 0
         print(f"{name:40s} {len(res.log_returns):5d} days  "
               f"cum {np.expm1(res.log_returns.sum()):8.1%}  "
               f"avg turnover {res.turnover.iloc[1:].mean():.3f}  "
-              f"solved {len(targets)}/{n_dates}{extra}")
+              f"solved {len(targets)}/{n_dates}  inverse-variance (crisis) {n_cr}")
 
 
 if __name__ == "__main__":

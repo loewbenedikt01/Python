@@ -24,11 +24,14 @@ The covariance estimator is switchable in the Variables block below:
             [0 | 10 | 20]
     Do not run each Mode with different Transaction costs. Calculate the Transaction costs impact across a small mode and then further document.
     
-    Possible Run Modes:
-        DETECTOR = "none" + MOMENT_MODE = "pooled" + USE_REGIME = False
-        DETECTOR = "hmm" + MOMENT_MODE = "pooled" + USE_REGIME = True
-        DETECTOR = "wasserstein" + MOMENT_MODE = "pooled" + USE_REGIME = True
-        DETECTOR = "changepoint" + MOMENT_MODE = "pooled" + USE_REGIME = True
+    Two run options (set in the Regime block below):
+        DETECTOR = "none"                 baseline: max-Sharpe at every rebalance
+        DETECTOR = <detector> + SERIES    regime run: max-Sharpe in calm, minimum-variance
+                                          when p_crisis > regime_def.CRISIS_THRESHOLD
+    plus one control run:
+        DETECTOR = "none" + ALWAYS_MIN_VAR = True    minimum variance at every rebalance
+    SERIES per detector: changepoint "vix" | "gspc", hmm "gspc" | "vix",
+    wasserstein "gspc_vix" | "gspc".  One detector/series per run.
 """
 
 import sys
@@ -74,21 +77,17 @@ FREQUENCIES = [
 # Regime Implementation
 # ----
 
-regime_def.DETECTOR = "changepoint"        # "none" | "hmm" | "wasserstein" | "changepoint"
+regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
 
-MOMENT_MODE     = "mixture"      # "pooled" | "weighted" | "mixture"
-USE_REGIME      = False         # blend toward min-variance in crisis
-RISK_MAX_SHRINK = 0.50          # a = p_crisis * RISK_MAX_SHRINK
- 
-DETECTOR     = regime_def.DETECTOR
-regime_probs = regime_def.regime_probs
-WEIGHT_FLOOR = regime_def.REGIME_WEIGHT_FLOOR      # same floor as the ML models
+# Control run, not a regime run: minimum variance at every rebalance
+ALWAYS_MIN_VAR = True
 
-tag = {"pooled": "p", "weighted": "w", "mixture": "m"}[MOMENT_MODE]
-tag += "_R" if USE_REGIME else ""
-det = "" if DETECTOR == "none" else f"{DETECTOR}"
+if ALWAYS_MIN_VAR and regime_def.DETECTOR != "none":
+    raise ValueError("[mvo] ALWAYS_MIN_VAR is a control run: set regime_def.DETECTOR = 'none'")
+_run = "_minvar" if ALWAYS_MIN_VAR else regime_def.run_tag()
 
-MODEL_NAME = f"mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{det}_{tag}"          # change per run; costs live in config.py
+MODEL_NAME = f"mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}"   # costs live in config.py
 
 
 # ----
@@ -115,49 +114,6 @@ def _moments(win: pd.DataFrame, w: np.ndarray | None = None):
         cov = Xc.T @ Xc / (w.sum() - 1.0)
     return mu, cov
  
- 
-def _n_eff(w: np.ndarray) -> float:
-    return float(w.sum() ** 2 / (w ** 2).sum())
- 
- 
-def _similarity(p_hist: np.ndarray, p_now: float) -> np.ndarray:
-    """Per-day resemblance to the regime expected at d, floored as in regime_def."""
-    sim = p_hist * p_now + (1.0 - p_hist) * (1.0 - p_now)
-    return WEIGHT_FLOOR + (1.0 - WEIGHT_FLOOR) * sim
- 
- 
-def _regime_moments(win: pd.DataFrame, p_hist: np.ndarray, p_now: float):
-    """
-    Dispatch on MOMENT_MODE.  Returns (mu, Sigma, n_eff_report).
-    With p_hist == p_now == 0 every mode returns the pooled moments.
-    """
-    if MOMENT_MODE == "pooled" or DETECTOR == "none":
-        mu, cov = _moments(win)
-        return mu, cov, float(len(win))
- 
-    if MOMENT_MODE == "weighted":
-        w = _similarity(p_hist, p_now)
-        mu, cov = _moments(win, w)
-        return mu, cov, _n_eff(w)
- 
-    # ---- mixture: soft state assignment, then combine with p_next
-    pis   = np.array([1.0 - p_now, p_now])
-    masks = [1.0 - p_hist, p_hist]
-    mus, covs, neffs = [], [], []
-    mu_pool, cov_pool = _moments(win)
-    for pk in masks:
-        if pk.sum() <= 0 or _n_eff(pk) < MIN_OBS:
-            # too little of that state in the window to estimate it
-            mus.append(mu_pool); covs.append(cov_pool); neffs.append(np.nan)
-            continue
-        m, c = _moments(win, pk)
-        mus.append(m); covs.append(c); neffs.append(_n_eff(pk))
- 
-    mu = sum(pi * m for pi, m in zip(pis, mus))
-    cov = sum(pi * (c + np.outer(m - mu, m - mu))
-              for pi, m, c in zip(pis, mus, covs))
-    return mu, cov, float(np.nanmax(neffs))
-
  
 # ----
 # Optimisers
@@ -225,37 +181,24 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
         if len(keep) < 2 or len(win) < MIN_OBS:
             continue
  
-        # daily regime probabilities over the estimation window, plus at d
-        if DETECTOR == "none":
-            p_hist, p_now = np.zeros(len(win)), 0.0
-        else:
-            p_hist = regime_probs(win.index)["p_crisis"].to_numpy()
-            p_now  = float(regime_probs([d])["p_crisis"].iloc[0])
- 
-        mu_d, cov_d, n_eff = _regime_moments(win, p_hist, p_now)
+        mu_d, cov_d = _moments(win)
         mu  = (mu_d - RISK_FREE_RATE) * h
         cov = cov_d * h
  
-        w = _max_sharpe(mu, cov)
+        # regime run: minimum variance when the holding period is classed crisis;
+        # control run: minimum variance always
+        p_now  = regime_def.p_crisis(d)
+        crisis = regime_def.in_crisis(d)
+        w = None if (crisis or ALWAYS_MIN_VAR) else _max_sharpe(mu, cov)
         method[d] = "max_sharpe" if w is not None else "min_variance"
-        w_mv = None
         if w is None:
-            w = w_mv = _min_variance(cov)
+            w = _min_variance(cov)
         if w is None:
             method.pop(d)
             continue
  
-        # regime-dependent risk: shrink toward minimum variance in crisis
-        a = 0.0
-        if USE_REGIME and DETECTOR != "none" and p_now > 0:
-            if w_mv is None:
-                w_mv = _min_variance(cov)
-            if w_mv is not None:
-                a = float(p_now * RISK_MAX_SHRINK)
-                w = (1.0 - a) * w + a * w_mv
- 
         rows[d] = pd.Series(w, index=keep)
-        diag[d] = {"p_crisis": p_now, "n_eff": n_eff, "shrink": a,
+        diag[d] = {"p_crisis": p_now, "crisis": crisis,
                    "vol_ann": float(np.sqrt(np.diag(cov).mean() * 252 / h))}
  
     targets = pd.DataFrame(rows).T
@@ -268,18 +211,12 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
 # ----
  
 def main() -> None:
-    if DETECTOR == "none" and (MOMENT_MODE != "pooled" or USE_REGIME):
-        print("[mvo] NOTE: regime channels set but DETECTOR='none' -> this run "
-              "must reproduce the pooled baseline bit-for-bit (regression test).",
-              flush=True)
- 
     prices = load_prices()
- 
     for frequency in FREQUENCIES:
         targets, method, diag = mvo_targets(prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
         name = f"mvo/{MODEL_NAME}_{frequency.lower()}"
- 
+
         export.build_report(
             name,
             res.log_returns,
@@ -292,16 +229,13 @@ def main() -> None:
                 "regime": diag,
             },
         )
- 
-        n_fb = int((method == "min_variance").sum())
-        extra = ""
-        if DETECTOR != "none" and len(diag):
-            extra = (f"  mean p_crisis {diag['p_crisis'].mean():.2f}"
-                     f"  min n_eff {diag['n_eff'].min():.0f}/{len(diag)}")
+
+        n_mv = int((method == "min_variance").sum())
+        n_cr = int(diag["crisis"].sum()) if len(diag) else 0
         print(f"{name:40s} {len(res.log_returns):5d} days  "
               f"cum {np.expm1(res.log_returns.sum()):8.1%}  "
               f"avg turnover {res.turnover.iloc[1:].mean():.3f}  "
-              f"min-var fallback {n_fb}/{len(method)}{extra}")
+              f"min-var {n_mv}/{len(method)} (crisis {n_cr})")
  
  
 if __name__ == "__main__":
