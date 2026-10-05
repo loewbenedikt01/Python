@@ -4,9 +4,6 @@ S&P 500 standard benchmark.
 Pure buy & hold of ^GSPC (adjusted close) from START_DATE to END_DATE — no
 universe, no rebalancing, one position held the whole way through.  Reference
 line only; not one of the compared strategies.
-
-For each run, change MODEL_NAME (and TRANSACTION_COST_BPS in config.py, though a
-buy & hold trades only once at inception).
 '''
 
 import sys
@@ -25,8 +22,8 @@ from portfolio import load_prices
 # Variables
 # ----
 
-MODEL_NAME = 'sp500_t_10'
-TICKER     = '^GSPC'        # download new benchmark data and run another one
+MODEL_NAME = 's&p_500'
+TICKER     = '^GSPC'
 
 # ---- 
 # Main Part
@@ -36,9 +33,8 @@ def main() -> None:
     px = load_prices()[TICKER].dropna().loc[START_DATE:END_DATE]
     log_returns = np.log(px / px.shift(1)).dropna().rename('portfolio')
 
-    # one position, held from the first day to the last
     weights  = pd.DataFrame(1.0, index=log_returns.index, columns=[TICKER])
-    turnover = pd.Series({log_returns.index[0]: 1.0}, name='turnover')     # deploy once
+    turnover = pd.Series({log_returns.index[0]: 1.0}, name='turnover')
 
     export.build_report(
         f'sp500/{MODEL_NAME}',

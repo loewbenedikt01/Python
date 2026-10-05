@@ -43,22 +43,23 @@ import numpy as np
 from hmmlearn.hmm import GaussianHMM
 from scipy.optimize import minimize
 
+# hmmlearn logs a line for every tiny non-monotone EM step; not useful here
 logging.getLogger('hmmlearn').setLevel(logging.ERROR)
 
 _LOG_2PI = float(np.log(2.0 * np.pi))
 _FD_STEP = 1e-4                                     # finite-difference step on theta
 _BOUNDS  = np.array([(-50.0, 50.0), (-50.0, 50.0),  # mu (scaled units)
-                     (np.log(0.05), np.log(50.0)),  # log sigma
+                     (np.log(0.05), np.log(50.0)),   # log sigma
                      (np.log(0.05), np.log(50.0)),
-                     (-12.0, 12.0), (-12.0, 12.0)]) # logit g11, logit g22
+                     (-12.0, 12.0), (-12.0, 12.0)])  # logit g11, logit g22
 
 
 @dataclass
 class HMMParams:
     pi:    np.ndarray      # (2,)   stationary distribution
     A:     np.ndarray      # (2, 2) transition matrix, rows sum to 1
-    mu:    np.ndarray      # (2,)   emission means
-    sigma: np.ndarray      # (2,)   emission std devs
+    mu:    np.ndarray      # (2,)   emission means      (scaled units)
+    sigma: np.ndarray      # (2,)   emission std devs   (scaled units)
 
 
 # ----
@@ -66,9 +67,7 @@ class HMMParams:
 # ----
 
 def to_params(th: np.ndarray) -> HMMParams:
-    '''
-    Unconstrained theta -> parameters, sorted so state 0 = calm, 1 = crisis.
-    '''
+    '''Unconstrained theta -> parameters, sorted so state 0 = calm, 1 = crisis.'''
     mu, sigma = th[:2], np.exp(th[2:4])
     g = 1.0 / (1.0 + np.exp(-th[4:6]))
     A = np.array([[g[0], 1 - g[0]], [1 - g[1], g[1]]])
@@ -99,10 +98,10 @@ def _forward(th: np.ndarray, x: np.ndarray):
     g11 = 1.0 / (1.0 + np.exp(-th[5]))
     l0 = -0.5 * ((x - m0) / np.exp(ls0)) ** 2 - ls0
     l1 = -0.5 * ((x - m1) / np.exp(ls1)) ** 2 - ls1
-    mx = np.maximum(l0, l1)
+    mx = np.maximum(l0, l1)                         # scale so outliers cannot underflow
     d0 = np.exp(l0 - mx).tolist()
     d1 = np.exp(l1 - mx).tolist()
-    p0 = (1.0 - g11) / (2.0 - g00 - g11)
+    p0 = (1.0 - g11) / (2.0 - g00 - g11)            # predicted P(state 0)
     c = np.empty(len(d0))
     a0 = p0
     for t in range(len(d0)):
@@ -117,17 +116,36 @@ def _forward(th: np.ndarray, x: np.ndarray):
 
 
 def filtered(th: np.ndarray, x: np.ndarray) -> np.ndarray:
-    '''
-    P(S_T | y_1..y_T), sorted calm/crisis
-    '''
+    '''P(S_T | y_1..y_T) with one parameter set for the whole of x, sorted calm/crisis.'''
     _, alpha = _forward(th, x)
     return alpha[np.argsort(th[2:4])]
 
 
+def filter_start(th: np.ndarray, x: np.ndarray) -> np.ndarray:
+    '''
+    Filtered state probabilities after the initialisation sample, chain
+    started in its stationary distribution (delta = pi), unsorted state order
+    of theta -- the starting point for filter_step.
+    '''
+    return _forward(th, x)[1]
+
+
+def filter_step(alpha: np.ndarray, th: np.ndarray, y: float) -> np.ndarray:
+    '''
+    One step of the forward filter with the parameters in force at t
+    (2018 eq. 8:  alpha_t  proportional to  alpha_{t-1} Gamma_t P_t(y_t)).
+    alpha and the result are in the unsorted state order of theta; theta
+    moves continuously, so that order stays consistent from day to day.
+    '''
+    g = 1.0 / (1.0 + np.exp(-th[4:6]))
+    G = np.array([[g[0], 1.0 - g[0]], [1.0 - g[1], g[1]]])
+    logd = -0.5 * ((y - th[:2]) / np.exp(th[2:4])) ** 2 - th[2:4]
+    u = (alpha @ G) * np.exp(logd - logd.max())
+    return u / u.sum()
+
+
 def forget_weights(n: int, n_eff: float) -> np.ndarray:
-    '''
-    lambda^(T-n), lambda = 1 - 1/N_eff, newest observation last (weight 1).
-    '''
+    '''lambda^(T-n), lambda = 1 - 1/N_eff, newest observation last (weight 1).'''
     lam = 1.0 - 1.0 / n_eff
     return lam ** np.arange(n - 1, -1, -1, dtype=float)
 
@@ -137,9 +155,7 @@ def forget_weights(n: int, n_eff: float) -> np.ndarray:
 # ----
 
 def _starting_values(x: np.ndarray, n_init: int, seed: int) -> list[np.ndarray]:
-    '''
-    Unweighted EM fits from random starts, used only as optimiser starts.
-    '''
+    '''Unweighted EM fits from random starts, used only as optimiser starts.'''
     X = x.reshape(-1, 1)
     out = []
     for k in range(n_init):
@@ -190,13 +206,10 @@ def initialise(x: np.ndarray, n_eff: float, n_init: int = 10, seed: int = 0):
 
 
 def _make_pd(M: np.ndarray, floor: float = 1e-8) -> np.ndarray:
-    '''
-    Symmetrise and lift non-positive eigenvalues, so I stays invertible.
-    '''
+    '''Symmetrise and lift non-positive eigenvalues, so I stays invertible.'''
     M = 0.5 * (M + M.T)
     v, U = np.linalg.eigh(M)
-    vals = np.maximum(v, floor * max(1.0, v.max()))
-    return np.dot(np.dot(U, np.diag(vals)), U.T)
+    return (U * np.maximum(v, floor * max(1.0, v.max()))) @ U.T
 
 
 # ----
@@ -207,23 +220,23 @@ def adaptive_step(th: np.ndarray, I: np.ndarray, x: np.ndarray, t: int, n_eff: f
     '''
     One step of the recursive adaptive estimator for the newest observation
     x[-1], at time t (number of observations seen so far, 1-based).
-    'x' is the scoring window ending with the newest observation.
+    `x` is the scoring window ending with the newest observation.
     Returns (theta_t, I_t, weighted log-likelihood at theta_{t-1}).
     '''
     w = forget_weights(len(x), n_eff)
     k = len(th)
     base, _ = _forward(th, x)
-    G = np.empty((len(x), k))
+    G = np.empty((len(x), k))                       # d log Pr(y_n | past) / d theta
     for i in range(k):
         e = np.zeros(k)
         e[i] = _FD_STEP
         G[:, i] = (_forward(th + e, x)[0] - _forward(th - e, x)[0]) / (2 * _FD_STEP)
 
-    score = np.dot(w, G)
-    s_t = G[-1]
-    I_new = I + (np.outer(s_t, s_t) - I) / t
+    score = w @ G                                   # grad l~_t(theta_{t-1})
+    s_t = G[-1]                                     # newest observation's score
+    I_new = I + (np.outer(s_t, s_t) - I) / t        # 2016 eq. (11)
     try:
-        step = np.linalg.solve(I_new, score) / n_eff
+        step = np.linalg.solve(I_new, score) / n_eff   # A = 1/N_eff, 2018 eq. (7)
     except np.linalg.LinAlgError:
         step = np.zeros(k)
     th_new = th + step if np.all(np.isfinite(step)) else th

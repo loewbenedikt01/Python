@@ -16,14 +16,14 @@ import pandas as pd
 sys.path.append(str(Path(__file__).resolve().parents[1] / '_metrics'))
 
 import export
-from config import START_DATE, END_DATE
+from config import START_DATE, END_DATE, TRANSACTION_COST_BPS
 from portfolio import build_portfolio, universe_for
 
 # ---- 
 # Variables
 # ----
 
-MODEL_NAME       = 'equal_weight_t_20'           
+MODEL_NAME       = f'equal_t_{TRANSACTION_COST_BPS}'           
 
 FREQUENCIES = [
     'Monthly',
@@ -54,7 +54,7 @@ def main() -> None:
     targets = equal_weight_targets()
     for frequency in FREQUENCIES:
         res = build_portfolio(targets, frequency=frequency)
-        name = f'equal_weight/{MODEL_NAME}_{frequency.lower()}'        # _output/equal_weight/equal_weight_monthly/...
+        name = f'equal_weight/{MODEL_NAME}_{frequency.lower()}'
 
         export.build_report(
             name,

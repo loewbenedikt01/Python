@@ -9,14 +9,23 @@ section 2.3 and 3.1:
   * distance: 2-Wasserstein between two clouds of equal size, solved exactly
     as an optimal assignment (Hungarian algorithm via scipy
     linear_sum_assignment on the cdist cost matrix), sec. 3.1.2:
-        W2(X, Y)^2 = min_pi (1/h1) sum_i ||X_i - Y_pi(i)||^2;
-  * centroid: the barycentre is restricted to the measures being clustered,
-    i.e. the member with the smallest summed distance to all other members of
-    its cluster (sec. 3.1.2, Exhibit 1);
-  * k-means: k-means++ initialisation with W2 as the distance, assign each
-    measure to its nearest centroid, recompute centroids, stop when the
-    assignment no longer changes (sec. 2.3, steps 1-3).
-The same code handles d = 1 (then W2 is the distance between sorted windows).
+        W2(X, Y)^2 = min_pi (1/h1) sum_i ||X_i - Y_pi(i)||^2.
+    The 1/h1 is the weight of each atom of the empirical measure (def. B.5);
+    the formula in sec. 3.1.2 omits it.  With equal h1 everywhere it scales
+    every distance by the same constant, so no assignment, medoid or
+    p_crisis changes;
+  * centroid: the barycentre (def. B.6, argmin of the summed W2) is
+    restricted to the measures being clustered, i.e. the member with the
+    smallest row sum of the cluster's W2 matrix (sec. 3.1.2, Exhibit 1);
+  * k-means: k-means++ initialisation with W2 as the distance (D^2
+    weighting), assign each measure to its nearest centroid, recompute
+    centroids (sec. 2.3, steps 1-3).  Stopping rule (def. B.4): centroid
+    shift below epsilon.  Medoids are discrete, so this is applied with
+    epsilon -> 0: stop when the assignment, hence the medoids, no longer
+    change.  n_init restarts keep the lowest total distance (our addition;
+    the paper does not state restarts).
+The same code handles d = 1 (then W2 is the distance between sorted windows;
+the paper's 'uni-d 2-WK-means', sec. 4.1.1).
 '''
 
 import numpy as np

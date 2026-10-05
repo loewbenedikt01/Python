@@ -1,7 +1,7 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  2 OCT 2026 20:03
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  5 OCT 2026 21:34
  system commands enabled.
-**c:/Users/benel/Coding/Python/Thesis/_latex/paper
-(c:/Users/benel/Coding/Python/Thesis/_latex/paper.tex
+**c:/Users/benel/Coding/Python/Paper/_latex/paper
+(c:/Users/benel/Coding/Python/Paper/_latex/paper.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
 Lua module: luaotfload 2024-12-03 v3.29 Lua based OpenType font support
@@ -188,7 +188,7 @@ LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
  [1
 
 {c:/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2] [1]
-Underfull \hbox (badness 10000) in paragraph at lines 91--95
+Underfull \hbox (badness 10000) in paragraph at lines 103--107
 
  []
 
@@ -204,12 +204,12 @@ Here is how much of LuaTeX's memory you used:
  100000,552014 words of node,token memory allocated
  411 words of node memory still in use:
    3 hlist, 1 vlist, 1 rule, 2 glue, 3 kern, 1 glyph, 4 attribute, 49 glue_spec, 4 attribute_list, 1 write nodes
-   avail lists: 2:40,3:26,4:5,5:27,6:6,7:1310,9:36,10:4,11:120
+   avail lists: 2:82,3:58,4:5,5:27,6:16,7:1598,9:54,10:4,11:140
  25503 multiletter control sequences out of 65536+600000
  32 fonts using 10413135 bytes
- 73i,5n,92p,264b,231s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 73i,5n,92p,263b,231s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <c:/Windows/Fonts/arial.ttf><c:/Windows/Fonts/arialbd.ttf>
-Output written on paper.pdf (4 pages, 68062 bytes).
+Output written on paper.pdf (4 pages, 69921 bytes).
 
 PDF statistics: 31 PDF objects out of 1000 (max. 8388607)
  18 compressed objects within 1 object stream

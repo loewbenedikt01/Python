@@ -11,7 +11,8 @@ lookback data rather than through the numbers themselves.
 
 Optimisation is long-only, fully invested, with a hard weight box
 [MIN_WEIGHT, MAX_WEIGHT] on every investable name.  The objective is the
-max-Sharpe portfolio; when it is ill-defined (no name has a positive expected
+max-Sharpe portfolio on expected returns in excess of the 3-month T-bill
+(risk_free.py); when it is ill-defined (no name has a positive expected
 excess return, or the solver fails) the model falls back to the
 minimum-variance portfolio under the same box.
 
@@ -30,6 +31,9 @@ The covariance estimator is switchable in the Variables block below:
                                           when p_crisis > regime_def.CRISIS_THRESHOLD
     plus one control run:
         DETECTOR = "none" + ALWAYS_MIN_VAR = True    minimum variance at every rebalance
+    and one extension of the regime run:
+        INTRA_TRIGGER = True              the regime is also checked daily; a flip between
+                                          scheduled dates triggers an extra rebalance
     SERIES per detector: changepoint "vix" | "gspc", hmm "gspc" | "vix",
     wasserstein "gspc_vix" | "gspc".  One detector/series per run.
 """
@@ -55,17 +59,15 @@ from config import (
     MIN_WEIGHT,
     MAX_WEIGHT,
     HORIZON_TRADING_DAYS,
-    RISK_FREE_RATE,
     MIN_OBS,
     TRANSACTION_COST_BPS,
 )
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
+from risk_free_rate import rf_daily
 
 # ----
 # Variables
 # ----
-
-COV_METHOD = "lw"           # "sample" | "lw" = "ledoit_wolf"
 
 FREQUENCIES = [
     "Monthly",
@@ -77,15 +79,21 @@ FREQUENCIES = [
 # Regime Implementation
 # ----
 
-regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
-regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
+regime_def.DETECTOR = "wasserstein"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = 'gspc_vix'       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
+COV_METHOD = "lw"           # "sample" | "lw" = "ledoit_wolf"
 
-# Control run, not a regime run: minimum variance at every rebalance
-ALWAYS_MIN_VAR = True
+# Control run, NOT a regime run: minimum variance at every rebalance
+ALWAYS_MIN_VAR = False
+
+# Regime run only
+INTRA_TRIGGER = True
 
 if ALWAYS_MIN_VAR and regime_def.DETECTOR != "none":
     raise ValueError("[mvo] ALWAYS_MIN_VAR is a control run: set regime_def.DETECTOR = 'none'")
-_run = "_minvar" if ALWAYS_MIN_VAR else regime_def.run_tag()
+if INTRA_TRIGGER and regime_def.DETECTOR == "none":
+    raise ValueError("[mvo] INTRA_TRIGGER needs a regime run: set regime_def.DETECTOR")
+_run = "_minvar" if ALWAYS_MIN_VAR else regime_def.run_tag() + ("_trig" if INTRA_TRIGGER else "")
 
 MODEL_NAME = f"mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}"   # costs live in config.py
 
@@ -163,6 +171,8 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
     cal = prices.loc[START_DATE:END_DATE].index
     month_firsts = cal[~cal.to_period("M").duplicated()]
     reb_dates = month_firsts[month_firsts.month.isin(REBALANCE_MONTHS[frequency])]
+    triggers  = regime_def.trigger_dates(cal, reb_dates) if INTRA_TRIGGER else pd.DatetimeIndex([])
+    decide    = reb_dates.union(triggers)
  
     h = HORIZON_TRADING_DAYS[frequency]
     lookback = pd.DateOffset(months=LOOKBACK_MONTHS_MVO)
@@ -171,7 +181,7 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
     method: dict[pd.Timestamp, str] = {}
     diag:   dict[pd.Timestamp, dict] = {}
  
-    for d in reb_dates:
+    for d in decide:
         uni = [t for t in universe_for(d.year) if t in ret.columns]
         win = ret.loc[d - lookback:d, uni]
         if len(win) < MIN_OBS:
@@ -181,8 +191,11 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
         if len(keep) < 2 or len(win) < MIN_OBS:
             continue
  
+        # expected excess return over the holding period: daily log rf in
+        # force at d (last T-bill quote before d), same units as mu_d
         mu_d, cov_d = _moments(win)
-        mu  = (mu_d - RISK_FREE_RATE) * h
+        rf_d = float(rf_daily([d]).iloc[0])
+        mu  = (mu_d - rf_d) * h
         cov = cov_d * h
  
         # regime run: minimum variance when the holding period is classed crisis;
@@ -199,11 +212,13 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
  
         rows[d] = pd.Series(w, index=keep)
         diag[d] = {"p_crisis": p_now, "crisis": crisis,
-                   "vol_ann": float(np.sqrt(np.diag(cov).mean() * 252 / h))}
+                   "vol_ann": float(np.sqrt(np.diag(cov).mean() * 252 / h)),
+                   "rf_ann": rf_d * 252, "trigger": d in triggers}
  
     targets = pd.DataFrame(rows).T
     diag_df = pd.DataFrame(diag).T.rename_axis("date")
-    return targets, pd.Series(method, name="method").sort_index(), diag_df
+    triggers = triggers[triggers.isin(targets.index)]        # only dates that got weights
+    return targets, pd.Series(method, name="method").sort_index(), diag_df, triggers
  
  
 # ----
@@ -213,8 +228,9 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
 def main() -> None:
     prices = load_prices()
     for frequency in FREQUENCIES:
-        targets, method, diag = mvo_targets(prices, frequency)
-        res = build_portfolio(targets, frequency=frequency, prices=prices)
+        targets, method, diag, triggers = mvo_targets(prices, frequency)
+        res = build_portfolio(targets, frequency=frequency, prices=prices,
+                              extra_rebalances=triggers)
         name = f"mvo/{MODEL_NAME}_{frequency.lower()}"
 
         export.build_report(
@@ -235,7 +251,8 @@ def main() -> None:
         print(f"{name:40s} {len(res.log_returns):5d} days  "
               f"cum {np.expm1(res.log_returns.sum()):8.1%}  "
               f"avg turnover {res.turnover.iloc[1:].mean():.3f}  "
-              f"min-var {n_mv}/{len(method)} (crisis {n_cr})")
+              f"min-var {n_mv}/{len(method)} (crisis {n_cr})"
+              + (f"  triggered {len(triggers)}" if INTRA_TRIGGER else ""))
  
  
 if __name__ == "__main__":

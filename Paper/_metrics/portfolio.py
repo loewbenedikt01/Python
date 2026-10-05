@@ -1,8 +1,6 @@
 
 '''
-Portfolio construction — the shared mechanic every model feeds into.
-
-
+Portfolio construction
 '''
 
 from __future__ import annotations
@@ -168,6 +166,7 @@ def build_portfolio(
     start=None,
     end=None,
     transaction_cost_bps: float = TRANSACTION_COST_BPS,
+    extra_rebalances=None,
 ) -> PortfolioResult:
     '''
     Parameters
@@ -181,6 +180,10 @@ def build_portfolio(
         Adjusted-close panel (date x ticker); defaults to load_prices().
     start, end
         Optional clamp on the simulation window.
+    extra_rebalances
+        Optional off-calendar rebalance dates (regime-triggered rebalancing in
+        mvo.py / hrp.py), added to the frequency's calendar.  Each must have a
+        target row in target_weights; it trades at that day's close.
 
     Returns
     -------
@@ -197,6 +200,9 @@ def build_portfolio(
 
     cal = px.loc[start:end].index
     rebs = _rebalance_dates(cal, frequency, px.notna())
+    if extra_rebalances is not None and len(extra_rebalances):
+        extra = pd.DatetimeIndex(extra_rebalances)
+        rebs = rebs.union(extra[extra.isin(cal)])
     rebs = rebs[(rebs >= start) & (rebs <= end)]
 
     tgt, rebalance_status = _resolve_targets(target_weights, rebs, px.notna())

@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from config import (
-    RISK_FREE_RATE,
     OUTPUT_ROOT,
 )
 from crises import (
@@ -147,8 +146,8 @@ def period_metrics(log_returns: pd.Series, freq: str = 'D') -> dict:
 
     dd_price = _drawdown_price(log_returns)
     return {
-        'sharpe_ratio':      sharpe_ratio(log_returns, RISK_FREE_RATE, freq),
-        'sortino_ratio':     sortino_ratio(log_returns, RISK_FREE_RATE, freq),
+        'sharpe_ratio':      sharpe_ratio(log_returns, freq=freq),
+        'sortino_ratio':     sortino_ratio(log_returns, freq=freq),
         'calmar_ratio':      calmar_ratio(log_returns, dd_price, freq),
         'ulcer_index':       ulcer_index(dd_price),
         'maximum_drawdown':  maximum_drawdown(dd_price),

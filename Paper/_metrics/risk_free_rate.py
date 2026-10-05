@@ -23,15 +23,15 @@ import numpy as np
 import pandas as pd
 
 from config import (
-    RISK_FREE, 
-    RISK_FREE_PATH, 
+    RISK_FREE_RATE, 
+    RISK_FREE_RATE_PATH, 
     TRADING_DAYS_PER_YEAR, 
     MONTHS_PER_YEAR,
 )
 
 @lru_cache(maxsize=None)
 def _yield() -> pd.Series:
-    df = pd.read_parquet(RISK_FREE_PATH)
+    df = pd.read_parquet(RISK_FREE_RATE_PATH)
     d = pd.to_numeric(df['DTB3'], errors='coerce').dropna() / 100.0
     d.index = pd.to_datetime(d.index)
     y = 365.0 * d / (360.0 - 91.0 * d)
@@ -44,16 +44,16 @@ def _annual_yield_at(idx: pd.DatetimeIndex) -> pd.Series:
     if y.isna().any():
         bad = y.index[y.isna()]
         raise ValueError(f'[risk_free] no T-bill quote before {bad[0].date()} '
-                         f'({len(bad)} date(s)); check {RISK_FREE_PATH}')
+                         f'({len(bad)} date(s)); check {RISK_FREE_RATE_PATH}')
     return y
 
 
 def rf_daily(index) -> pd.Series:
     idx = pd.DatetimeIndex(index)
-    if RISK_FREE == 'zero':
+    if RISK_FREE_RATE == 'zero':
         return pd.Series(0.0, index=idx, name='rf')
-    if RISK_FREE != 'tbill_3m':
-        raise ValueError(f'[risk_free] unknown RISK_FREE {RISK_FREE!r}; "tbill_3m" | "zero"')
+    if RISK_FREE_RATE != 't_bill_3_month':
+        raise ValueError(f'[risk_free] unknown RISK_FREE {RISK_FREE_RATE!r}; "t_bill_3_month" | "zero"')
     y = _annual_yield_at(idx)
     return pd.Series(np.log1p(y.to_numpy()) / TRADING_DAYS_PER_YEAR, index=idx, name='rf')
 
@@ -64,7 +64,7 @@ def rf_period(index, freq: str = 'D') -> pd.Series:
         return rf_daily(idx)
     if freq != 'M':
         raise ValueError(f'freq must be "D" or "M", got {freq!r}')
-    if RISK_FREE == 'zero':
+    if RISK_FREE_RATE == 'zero':
         return pd.Series(0.0, index=idx, name='rf')
     starts = idx.to_period('M').to_timestamp()
     y = _annual_yield_at(pd.DatetimeIndex(starts))

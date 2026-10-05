@@ -13,7 +13,10 @@ so each detector/series combination is its own run with its own output name
 What the regime run does
 ------------------------
   * MVO:   max-Sharpe in calm, minimum-variance when in_crisis(d).
-  * HRP:   HRP in calm, inverse-variance when in_crisis(d).
+  * HRP:   HRP in calm, minimum-variance when in_crisis(d) (CRISIS_PORTFOLIO).
+  * MVO / HRP with INTRA_TRIGGER = True: the same switch, but the signal is
+    also checked daily and a flip between scheduled dates triggers an extra
+    rebalance (trigger_dates).
   * XGB / RF / LSTM: the model learns with the regime as input, through
     the interaction features (rank - 0.5) * p_crisis (add_regime_features);
     the LSTM also gets raw p_crisis as an input channel.
@@ -40,22 +43,26 @@ import numpy as np
 import pandas as pd
 
 _ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
+if str(_ROOT) not in sys.path:                 # once, at import -- not per call
     sys.path.append(str(_ROOT))
 
 
 # ----
-# Detector and series
+# Detector and series (set in the model file)
 # ----
 
 DETECTOR = 'none'       # 'none' | 'changepoint' | 'hmm' | 'wasserstein'
-SERIES   = None
+SERIES   = None         # see DETECTOR_SERIES; ignored for 'none'
 
-# Series each detector can run on
+# Series each detector can run on.  Every detector writes one daily CSV per
+# series to  _regimes/<detector>/regimes_final/<detector>_<series>.csv
+# with at least the columns date, p_calm, p_crisis, already shifted one day
+# (value at d uses data through d-1).
 DETECTOR_SERIES = {
-    'changepoint': ('vix', 'gspc'),       # VIX main; GSPC robustness
-    'hmm':         ('gspc', 'vix'),       # GSPC main as in the paper; VIX robustness
-    'wasserstein': ('gspc_vix', 'gspc'),  # GSPC + VIX main; GSPC robustness
+    'changepoint': ('vix', 'gspc'),       # VIX breaks primary, GSPC robustness
+    'hmm':         ('gspc', 'vix'),       # S&P 500 returns as in the paper; the VIX-change
+                                          # HMM mostly catches short VIX jumps (check_hmm.py)
+    'wasserstein': ('gspc_vix', 'gspc'),  # 2-d S&P 500 + VIX main, S&P 500 alone robustness
 }
 
 # A rebalance date counts as crisis when p_crisis is above this threshold
@@ -86,7 +93,7 @@ def run_tag() -> str:
         return ''
     if DETECTOR not in DETECTOR_SERIES:
         raise ValueError(f'[regime] unknown DETECTOR {DETECTOR!r}; '
-                         f'choose 'none' or one of {list(DETECTOR_SERIES)}')
+                         f'choose "none" or one of {list(DETECTOR_SERIES)}')
     if SERIES not in DETECTOR_SERIES[DETECTOR]:
         raise ValueError(f'[regime] {DETECTOR}: SERIES must be one of '
                          f'{list(DETECTOR_SERIES[DETECTOR])}, got {SERIES!r}')
@@ -156,6 +163,42 @@ def p_crisis(d) -> float:
 def in_crisis(d) -> bool:
     '''True when the holding period starting at d is classed as crisis.'''
     return DETECTOR != 'none' and p_crisis(d) > CRISIS_THRESHOLD
+
+
+# ----
+# Regime-triggered rebalancing (MVO / HRP, INTRA_TRIGGER = True)
+# ----
+
+TRIGGER_CONFIRM_DAYS = 3    # a flip counts once it has held this many trading days in a row
+
+
+def trigger_dates(calendar, scheduled, confirm_days: int = TRIGGER_CONFIRM_DAYS) -> pd.DatetimeIndex:
+    '''
+    Off-calendar rebalance dates for a regime run.  Walking the trading days in
+    `calendar`, the state held is the crisis flag (p_crisis > CRISIS_THRESHOLD)
+    at the last rebalance, scheduled or triggered.  A day t that is not a
+    scheduled rebalance becomes a trigger when the flag has differed from the
+    held state on each of the last `confirm_days` trading days, t included.
+    The flag at t uses data through t-1, so the switch trades at t's close
+    without look-ahead.  Empty for the baseline.
+    '''
+    cal = pd.DatetimeIndex(calendar)
+    if DETECTOR == 'none' or len(cal) == 0:
+        return pd.DatetimeIndex([])
+    sched = set(pd.DatetimeIndex(scheduled))
+    flag = (regime_probs(cal)['p_crisis'] > CRISIS_THRESHOLD).to_numpy()
+    out, held, streak = [], None, 0
+    for t, f in zip(cal, flag):
+        if t in sched:
+            held, streak = f, 0
+            continue
+        if held is None:                        # before the first scheduled rebalance
+            continue
+        streak = streak + 1 if f != held else 0
+        if streak >= confirm_days:
+            out.append(t)
+            held, streak = f, 0
+    return pd.DatetimeIndex(out)
 
 
 # ----

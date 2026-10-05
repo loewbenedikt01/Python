@@ -8,7 +8,7 @@ One model per series:
     vix   VIX log changes
     gspc  S&P 500 log returns      (the paper's setting: index log returns)
 Input is the same log-return parquet the changepoint detector uses
-(_database/regimes_data_log.parquet, written by changepoint/data_prep.py).
+(_database/changepoint.parquet, written by changepoint/data_prep.py).
 
 Procedure (see hmm_core.py for the equations):
   1. initialisation: the weighted likelihood is maximised numerically on the
@@ -17,8 +17,10 @@ Procedure (see hmm_core.py for the equations):
      initialization');
   2. every following day one recursive update with the newest return,
      effective memory N_EFF = 260 days, A = 1/N_EFF (paper sec. 4.2);
-  3. after each update the forward filter gives P(S_t | r_1..r_t) (eq. 8) and
-     the one-step forecast P(S_{t+1} | r_1..r_t) = alpha_t Gamma_t (eq. 9).
+  3. after each update the forward filter is carried one step with the
+     parameters in force that day, P(S_t | r_1..r_t) proportional to
+     alpha_{t-1} Gamma_t P_t(r_t) (eq. 8, time-varying Gamma_t and P_t), and
+     gives the one-step forecast P(S_{t+1} | r_1..r_t) = alpha_t Gamma_t (eq. 9).
 
 Output, point-in-time: p_crisis(d) is the forecast made at the close of d-1,
 so the value at d uses only data through d-1.  This matches the one-day shift
@@ -37,7 +39,7 @@ import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 
-from hmm_engine import adaptive_step, filtered, initialise, to_params
+from hmm_engine import adaptive_step, filter_start, filter_step, initialise, to_params
 
 # ----
 # Parameters
@@ -63,9 +65,7 @@ OUT_DIR   = HERE / 'regimes_final'
 # ----
 
 def load_returns(path: Path = DATA_PATH) -> pd.DataFrame:
-    '''
-    Daily log returns, one column per ticker, DatetimeIndex.
-    '''
+    '''Daily log returns, one column per ticker, DatetimeIndex.'''
     df = pd.read_parquet(path)
     for c in ('Date', 'date'):
         if c in df.columns:
@@ -91,14 +91,16 @@ def _run(x: np.ndarray) -> list[tuple]:
         raise ValueError(f'need more than INIT_DAYS = {INIT_DAYS} returns, got {len(x)}')
 
     th, I = initialise(x[:INIT_DAYS], N_EFF)
+    a = filter_start(th, x[:INIT_DAYS])              # filtered through obs INIT_DAYS-1
     loglik = np.nan
     rows = []
     for i in range(INIT_DAYS - 1, len(x)):
-        if i >= INIT_DAYS:
+        if i >= INIT_DAYS:                            # update with return i
             th, I, loglik = adaptive_step(th, I, x[max(0, i + 1 - WINDOW):i + 1], i + 1, N_EFF)
-        if i + 1 < len(x):
+            a = filter_step(a, th, x[i])              # eq. (8): Gamma_t, P_t with theta_t
+        if i + 1 < len(x):                            # forecast for day i+1, eq. (9)
             p = to_params(th)
-            alpha = filtered(th, x[max(0, i + 1 - WINDOW):i + 1])
+            alpha = a[np.argsort(th[2:4])]
             rows.append((i + 1, alpha @ p.A, alpha, p, loglik))
     return rows
 
@@ -112,13 +114,13 @@ def build(r: pd.Series, out_path: Path) -> pd.DataFrame:
 
 def _write(idx: pd.DatetimeIndex, rows: list[tuple], out_path: Path) -> pd.DataFrame:
     pos = np.array([q[0] for q in rows])
-    fc  = np.array([q[1] for q in rows])
-    fil = np.array([q[2] for q in rows])
+    fc  = np.array([q[1] for q in rows])              # forecast probabilities, eq. (9)
+    fil = np.array([q[2] for q in rows])              # filtered on d-1, eq. (8)
     mu  = np.array([q[3].mu for q in rows])
     sg  = np.array([q[3].sigma for q in rows])
     ann = np.sqrt(252) / SCALE_X
 
-    m = (fc * mu).sum(axis=1)
+    m = (fc * mu).sum(axis=1)                         # mixture moments, eqs. (10)-(11)
     v = (fc * (mu ** 2 + sg ** 2)).sum(axis=1) - m ** 2
 
     df = pd.DataFrame({
@@ -132,7 +134,7 @@ def _write(idx: pd.DatetimeIndex, rows: list[tuple], out_path: Path) -> pd.DataF
         'p_stay_crisis':     [q[3].A[-1, -1] for q in rows],
         'loglik':            [q[4] for q in rows],
         'n_train':           np.minimum(pos, WINDOW),
-        'refit_date':        idx[pos - 1],
+        'refit_date':        idx[pos - 1],            # parameters estimated at this close
         'mu_fc_ann':         m * 252 / SCALE_X,
         'sigma_fc_ann':      np.sqrt(v) * ann,
     }, index=idx[pos])

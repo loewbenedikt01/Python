@@ -19,7 +19,7 @@ Procedure:
      window, to keep the distance matrix tractable).  The crisis cluster is
      the one whose windows have the higher average S&P 500 variance;
   3. every day d, the window ending on d-1 is compared with both centroids,
-     in squared W2, the loss k-means minimises:
+     in squared W2:
         p_crisis(d) = W2(w, calm)^2 / (W2(w, calm)^2 + W2(w, crisis)^2),
      so p_crisis > 0.5 exactly when the window is closer to the crisis
      centroid.  The value at d uses only data through d-1.
@@ -27,6 +27,22 @@ Procedure:
 The paper's trading test assumes the cluster of each new window is known in
 advance; here clusters are fitted on past windows only and new windows are
 assigned out of sample, so there is no look-ahead.
+
+Differences from the paper (the clustering itself, wk_core.py, is theirs):
+  * data: daily closes, H1 = 21 (one month); the paper uses hourly closes,
+    (h1, h2) = (35, 28) in the synthetic tests and (140, 133) / (210, 203)
+    for its 2-d real pairs, i.e. windows always slide by one trading day;
+  * no copula step: the paper's real-data method (sec. 5) maps each series
+    through the empirical CDF of its univariate cluster first, so the 2-d
+    step sees only the dependence structure (correlation regimes).  That
+    removes the volatility level we want to detect, so the 2-d clustering
+    runs on the returns directly, as in the paper's mean-variance
+    experiments (sec. 4.1.1);
+  * each series scaled by its expanding standard deviation (the paper uses
+    raw returns, or uniforms after the copula step);
+  * training windows thinned to every TRAIN_STEP-th one, out-of-sample
+    monthly refits, crisis = higher S&P 500 variance, and the continuous
+    p_crisis are ours.  p_crisis > 0.5 is the paper's nearest-centroid rule.
 
 Output: regimes_final/wasserstein_{gspc_vix,gspc}.csv, daily, read by
 regime_def.py.  Columns p_calm, p_crisis, label match the other detectors;
@@ -59,7 +75,7 @@ N_JOBS      = -1
 
 HERE      = Path(__file__).resolve().parent
 DATA_PATH = HERE.parents[1] / '_database' / 'regimes_data_log.parquet'
-OUT_DIR   = HERE / 'regimes_final'
+OUT_DIR   = HERE / 'regimes_final_5'
 
 
 # ----
