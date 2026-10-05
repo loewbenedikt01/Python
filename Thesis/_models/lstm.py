@@ -2,16 +2,21 @@
 Long Short Term Memory (LSTM) — cross-sectional return forecast -> portfolio weights.
 
 Walk-forward, refit at every rebalance date `d` on point-in-time data:
-  * fixed rolling window (no expansion): TRAINING_MONTHS_RF months of training,
-    an EMBARGO_MONTHS_RF gap, then a VALIDATION_MONTHS_RF block ending at `d`;
+  * WINDOW_MODE "latest": the last TRAINING_MONTHS_LSTM months whose label has
+    resolved before `d`, no validation block (same as xgb.py / rf.py);
+    "holdout": TRAINING_MONTHS_LSTM months of training, an EMBARGO_MONTHS_LSTM
+    gap, then a VALIDATION_MONTHS_LSTM block ending at `d` (reporting only);
+  * TARGET "rank": cross-sectional rank of the forward return within each
+    date, centred to -0.5..0.5; "return": forward return demeaned within date;
+  * each sample is the SEQ_LEN consecutive monthly feature vectors ending at t;
   * the feature panel is rebuilt per `d` with the cross-section pinned to
     `universe_for(d.year)` — the same ~20 names for every training row;
-  * every (grid point, seed) in RF_GRID x BASE_SEED is fit — no search, no
-    selection — and the raw predictions are averaged over the whole ensemble,
-    then ranked cross-sectionally and mapped to weights via the config weight
-    box.  The validation block only reports ensemble val R^2 / rank IC.
+  * every (grid point, seed) in LSTM_GRID x BASE_SEED_LSTM is fit — no search,
+    no selection — and the raw predictions are averaged over the whole
+    ensemble, then ranked cross-sectionally and mapped to weights via the
+    config weight box.
 
-Reported specification count is 1 (the ensemble).  Output tree: _output/rf/.
+Reported specification count is 1 (the ensemble).  Output tree: _output/lstm/.
 
     Two run options (set in the Regime block below):
         DETECTOR = "none"                 baseline: no regime information
@@ -57,6 +62,7 @@ from config import (
     BASE_SEED_LSTM,
     LSTM_FIXED,
     LSTM_GRID,
+    TRANSACTION_COST_BPS,
 )
 from features import load_db, features_panel, feature_cache_stats
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
@@ -67,8 +73,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = "LSTM_no_t_h"        # change per run
-WINDOW_MODE  = "holdout"            # "holdout" | "latest"
+WINDOW_MODE  = "latest"             # "holdout" | "latest"
+TARGET       = "rank"               # "rank" | "return"
 SEQ_LEN     = int(LSTM_FIXED["seq_len"])
 SEEDS       = list(BASE_SEED_LSTM)   # LSTM seed variance is large
 N_WORKERS   = max(1, (os.cpu_count() or 2) // 2)   # parallel rebalance dates
@@ -85,10 +91,12 @@ FREQUENCIES = [
 # Regime implementation
 # ----
  
-regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
-regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
- 
- 
+regime_def.DETECTOR = "changepoint"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = 'vix'       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
+
+MODEL_NAME = f"lstm_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}{regime_def.run_tag()}"
+
+
 def _add_pcrisis(panel: pd.DataFrame) -> pd.DataFrame:
     """
     Regime run only: raw p_crisis as an input channel per timestep.  A neural
@@ -291,8 +299,8 @@ def _fit_predict(X_tr, y_tr, X_va, X_d):
 # TensorFlow accumulates state across the hundreds of nets built in one
 # process, so per-date fit time grows linearly through a run.  Each date is
 # therefore fitted in its own short-lived process (max_tasks_per_child=1):
-# nothing can accumulate, and independent dates run in parallel.  Only theta
-# depends on date order; it is applied afterwards in the main process.
+# nothing can accumulate, and independent dates run in parallel.  Weights are
+# built afterwards in the main process.
  
 _STATE: dict = {}
  
@@ -340,14 +348,21 @@ def _date_job(frequency: str, d, tr_months, va_months, regime=("none", None)) ->
     if d not in panel.index.get_level_values("date"):
         return {"d": d, "reject": "no feature panel row at d"}
  
+    # labels for every panel row; the rank target ranks within each date over
+    # all universe names with a resolved label (as in xgb.py / rf.py), not only
+    # those that also have a full SEQ_LEN history
+    y_all = fwd_stack.reindex(panel.index).dropna()
+    if TARGET == "rank":
+        y_all = y_all.groupby(level="date").rank(pct=True) - 0.5
+
     by_date = _by_date(panel, cols)
     X_tr, k_tr = _build_sequences(by_date, tr_months, cols)
-    y_tr = fwd_stack.reindex(k_tr).to_numpy()
+    y_tr = y_all.reindex(k_tr).to_numpy()
     ok = np.isfinite(y_tr)
     X_tr, k_tr, y_tr = X_tr[ok], k_tr[ok], y_tr[ok]
- 
+
     X_va, k_va = _build_sequences(by_date, va_months, cols)
-    y_va = fwd_stack.reindex(k_va)
+    y_va = y_all.reindex(k_va)
     ok = y_va.notna().to_numpy()
     X_va, k_va, y_va = X_va[ok], k_va[ok], y_va[ok]
  
@@ -503,6 +518,7 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             continue
         realized = realized - realized.mean()
         p, r = pred.reindex(realized.index), realized
+        p = p - p.mean()                 # sign = above / below the date's average
         r2_oos[d] = 1.0 - float(np.sum((r - p) ** 2) / np.sum(r ** 2))
         rho, pv = spearmanr(p, r)
         sp_rho[d], sp_p[d] = float(rho), float(pv)
@@ -538,7 +554,7 @@ def main() -> None:
     for frequency in FREQUENCIES:
         targets, n_dates, diagnostics = lstm_targets(db, prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
-        name = f"lstm/{MODEL_NAME}{regime_def.run_tag()}_{frequency.lower()}"
+        name = f"lstm/{MODEL_NAME}_{frequency.lower()}"
 
         export.build_report(
             name,

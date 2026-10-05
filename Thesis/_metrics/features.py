@@ -35,7 +35,7 @@ import pandas as pd
 
 try:
     from config import DATABASE_PATH, TRADING_DAYS_PER_YEAR
-except ImportError:                       # allow standalone import
+except ImportError:
     DATABASE_PATH = None
 
 # ----

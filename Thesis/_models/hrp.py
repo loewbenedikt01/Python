@@ -72,10 +72,10 @@ LINKAGE    = "ward"             # "single" | "ward" | "average"
 # Regime implementation
 # ----
 
-regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
-regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
+regime_def.DETECTOR = "wasserstein"     # "none" | "changepoint" | "hmm" | "wasserstein"
+regime_def.SERIES   = 'gspc_vix'       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
 
-MODEL_NAME = f"hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}{regime_def.run_tag()}"   # costs live in config.py
+MODEL_NAME = f"hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}{regime_def.run_tag()}"
 
 FREQUENCIES = [
     "Monthly",

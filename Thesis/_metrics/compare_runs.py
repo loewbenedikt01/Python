@@ -8,8 +8,15 @@ per rebalance frequency:
      rebalances classed as crisis, and the Sharpe difference to the baseline
      with its p-value;
   2. crisis windows (crises.py main_crises): cumulative return peak -> trough
-     and peak -> recovery, and maximum drawdown over peak -> recovery.
-Both tables are also saved to _output/_comparison/<MODEL>/.
+     and peak -> recovery, and maximum drawdown over peak -> recovery;
+  3. timing test (needs the baseline and the min_var control run): each regime
+     run against a static mix that holds the min-variance portfolio for the
+     same share of the time, without timing.  The mix's daily simple return is
+         (1 - s) * R_baseline + s * R_min_var,   s = crisis share of the run,
+     i.e. both portfolios held side by side in fixed proportion (rebalanced
+     daily, no extra trading costs, which slightly favours the mix).  A regime
+     run that beats its mix gains from *when* it switches, not from how often.
+All tables are also saved to _output/_comparison/<MODEL>/.
 
 Sharpe difference test: Ledoit & Wolf (2008, J. Empirical Finance 15,
 850-859), HAC version (their sec. 3.1).  On daily returns of the two runs over
@@ -34,16 +41,15 @@ from crises import main_crises
 # Variables
 # ----
 
-MODEL  = "mvo"                  # output subfolder: "mvo" | "hrp" | "xgb" | "rf" | "lstm"
-PREFIX = "mvo_t_10_lw"          # the run's MODEL_NAME without regime tag and frequency
-                                # (e.g. "hrp_t_10_lw_ward", or your MODEL_NAME in xgb.py)
+MODEL  = "lstm"                  # output subfolder: "mvo" | "hrp" | "xgb" | "rf" | "lstm"
+PREFIX = "lstm_t_10_latest_rank"           # the run's MODEL_NAME without regime tag and frequency
 
 RUNS = {                        # label -> regime_def.run_tag() of that run
     "baseline":       "",
     "changepoint":    "_changepoint_vix",
     "hmm":            "_hmm_gspc",
     "wasserstein":    "_wasserstein_gspc_vix",
-    "min_var":        "_minvar",          # MVO control run (ALWAYS_MIN_VAR); skipped if absent
+    #"min_var":        "_minvar",          # MVO control run (ALWAYS_MIN_VAR); skipped if absent
 }
 BASELINE    = "baseline"                  # set to "min_var" to test the regime runs against it
 FREQUENCIES = ["monthly", "quarterly", "yearly"]     # missing folders are skipped
@@ -175,6 +181,37 @@ def crisis_table(runs: dict) -> pd.DataFrame:
     return out
 
 
+def _sharpe(r: pd.Series) -> float:
+    x = r.dropna() - RISK_FREE_RATE / PERIODS_PER_YEAR
+    return float(x.mean() / x.std(ddof=1) * np.sqrt(PERIODS_PER_YEAR))
+
+
+def _max_dd(r: pd.Series) -> float:
+    level = np.exp(np.concatenate([[0.0], r.dropna().cumsum().to_numpy()]))
+    return float((level / np.maximum.accumulate(level) - 1.0).min())
+
+
+def timing_table(runs: dict) -> pd.DataFrame | None:
+    if "baseline" not in runs or "min_var" not in runs:
+        return None
+    both = pd.concat([runs["baseline"]["returns"], runs["min_var"]["returns"]],
+                     axis=1, join="inner").dropna()
+    R_base, R_mv = np.expm1(both.iloc[:, 0]), np.expm1(both.iloc[:, 1])
+    rows = {}
+    for label, run in runs.items():
+        if label in ("baseline", "min_var") or run["crisis"] is None:
+            continue
+        s = float(run["crisis"].mean())
+        mix = np.log1p((1.0 - s) * R_base + s * R_mv)
+        r = run["returns"].reindex(mix.index)
+        d, p = sharpe_test(r, mix)
+        rows[label] = {"min_var_share": s,
+                       "sharpe_run": _sharpe(r), "sharpe_mix": _sharpe(mix),
+                       "d_sharpe": d, "p_value": p,
+                       "max_dd_run": _max_dd(r), "max_dd_mix": _max_dd(mix)}
+    return pd.DataFrame(rows).T if rows else None
+
+
 def _fmt_overall(df: pd.DataFrame) -> pd.DataFrame:
     pct = ["ann_return", "ann_vol", "max_dd", "crisis_share"]
     num = ["sharpe", "sortino", "calmar", "ulcer", "turnover", "d_sharpe"]
@@ -221,6 +258,18 @@ def main() -> None:
         print(_fmt_overall(ov).to_string())
         print("\nCrisis windows (crises.py)")
         print(cr.map(lambda x: "" if pd.isna(x) else f"{x:.2%}").to_string())
+
+        tt = timing_table(runs)
+        if tt is not None:
+            print("\nTiming test: regime run vs static mix with the same min-variance share")
+            out = tt.copy().astype(object)
+            for c in ("min_var_share", "max_dd_run", "max_dd_mix"):
+                out[c] = tt[c].map(lambda x: f"{x:.2%}")
+            for c in ("sharpe_run", "sharpe_mix", "p_value"):
+                out[c] = tt[c].map(lambda x: f"{x:.3f}")
+            out["d_sharpe"] = tt["d_sharpe"].map(lambda x: f"{x:+.3f}")
+            print(out.to_string())
+            tt.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_timing.csv")
 
         ov.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_overall.csv")
         cr.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_crises.csv")

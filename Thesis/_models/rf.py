@@ -49,6 +49,7 @@ from config import (
     BASE_SEED,
     RF_FIXED,
     RF_GRID,
+    TRANSACTION_COST_BPS,
 )
 from features import load_db, features_panel, feature_cache_stats
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
@@ -57,9 +58,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = "rf_no_t_h"        # change per run
-WINDOW_MODE  = "holdout"         # "holdout" | "latest"
-
+WINDOW_MODE     = 'latest'          # "holdout" | "latest"
+TARGET          = 'rank'            # 'return'
 FREQUENCIES = [
     #"Monthly",
     "Quarterly",
@@ -74,8 +74,10 @@ FREQUENCIES = [
 regime_def.DETECTOR = "none"     # "none" (baseline) | "changepoint" | "hmm" | "wasserstein"
 regime_def.SERIES   = None       # changepoint "vix"|"gspc", hmm "gspc"|"vix", wasserstein "gspc_vix"|"gspc"
 
+MODEL_NAME = f'rf_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}{regime_def.run_tag()}'
+
 # ----
-# Weight box  (water-filling projection onto {lo <= w_i <= hi, sum w = 1})
+# Weight Constraints
 # ----
 
 def _weight_box(n: int) -> tuple[float, float]:
@@ -266,8 +268,10 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]
-        y = fwd_stack.reindex(sub.index)
-        return sub[y.notna()], y.dropna()
+        y = fwd_stack.reindex(sub.index).dropna()
+        if TARGET == 'rank':
+            y = y.groupby(level='date').rank(pct=True) - 0.5
+        return sub.loc[y.index], y
 
     rows:  dict[pd.Timestamp, pd.Series] = {}
     preds: dict[pd.Timestamp, pd.Series] = {}
@@ -394,6 +398,7 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             continue
         realized = realized - realized.mean()
         p, r = pred.reindex(realized.index), realized
+        p = p - p.mean()
         r2_oos[d] = 1.0 - float(np.sum((r - p) ** 2) / np.sum(r ** 2))
         rho, pv = spearmanr(p, r)
         sp_rho[d], sp_p[d] = float(rho), float(pv)
@@ -430,7 +435,7 @@ def main() -> None:
     for frequency in FREQUENCIES:
         targets, n_dates, diagnostics = rf_targets(db, prices, frequency)
         res = build_portfolio(targets, frequency=frequency, prices=prices)
-        name = f"rf/{MODEL_NAME}{regime_def.run_tag()}_{frequency.lower()}"
+        name = f"rf/{MODEL_NAME}_{frequency.lower()}"
 
         export.build_report(
             name,
