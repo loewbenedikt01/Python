@@ -29,7 +29,9 @@ daily log returns in excess of the risk-free rate (risk_free.rf_daily, the
 Usage: set MODEL and PREFIX below and run the file.
 """
 
+import sys
 from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parents[1] / '_metrics'))
 
 import numpy as np
 import pandas as pd
@@ -45,25 +47,28 @@ from crises import main_crises
 
 MODEL  = "mvo"                  # output subfolder: "mvo" | "hrp" | "xgb" | "rf" | "lstm"
 PREFIX = "mvo_t_10_lw"
+CRISIS_PORTFOLIO = "min_var"    # "min_var" | "ivp"
 
-RUNS = { 
+_c = "_ivp" if CRISIS_PORTFOLIO == "ivp" else ""
+RUNS = {
     "baseline":         "",
-    "changepoint":      "_changepoint_vix",
-    "hmm":              "_hmm_gspc",
-    "wasserstein":      "_wasserstein_gspc_vix",
-    "changepoint_trig": "_changepoint_vix_trig",
-    "hmm_trig":         "_hmm_gspc_trig",
-    "wasserstein_trig": "_wasserstein_gspc_vix_trig",
+    "changepoint":      f"_changepoint_vix{_c}",
+    "hmm":              f"_hmm_gspc{_c}",
+    "wasserstein":      f"_wasserstein_gspc_vix{_c}",
+    "changepoint_trig": f"_changepoint_vix{_c}_trig",
+    "hmm_trig":         f"_hmm_gspc{_c}_trig",
+    "wasserstein_trig": f"_wasserstein_gspc_vix{_c}_trig",
     "min_var":          None,
 }
 # Always-min-variance control (mvo.py, ALWAYS_MIN_VAR = True).  MVO and HRP use
 # the same covariance and weight box, so the MVO control serves both; for the
-# ML models it is a plain reference row.  None = leave it out.
-MIN_VAR_RUN = "mvo/mvo_t_10_lw_minvar"
+# ML models it is a plain reference row.  None = leave it out (and with it the
+# timing test); the IVP runs are compared with the baseline only.
+MIN_VAR_RUN = "mvo/mvo_t_10_lw_minvar" if CRISIS_PORTFOLIO == "min_var" else None
 BASELINE    = "baseline"                  # set to "min_var" to test the regime runs against it
 FREQUENCIES = ["monthly", "quarterly", "yearly"]     # missing folders are skipped
 
-CRISIS_NAMES = {                # crises.py labels -> short names for the table
+CRISIS_NAMES = {
     "crisis_1": "Dotcom",
     "crisis_2": "GFC",
     "crisis_3": "2018 Q4",
@@ -283,7 +288,7 @@ def main() -> None:
         if not runs:
             continue
 
-        print(f"\n=== {MODEL} / {PREFIX} / {freq} ===")
+        print(f"\n=== {MODEL} / {PREFIX}{_c} / {freq} ===")
         if missing:
             print("  missing: " + ", ".join(missing))
 
@@ -306,8 +311,8 @@ def main() -> None:
             print(out.to_string())
             tt.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_timing.csv")
 
-        ov.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_overall.csv")
-        cr.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_crises.csv")
+        ov.to_csv(SAVE_DIR / f"{PREFIX}{_c}_{freq}_overall.csv")
+        cr.to_csv(SAVE_DIR / f"{PREFIX}{_c}_{freq}_crises.csv")
 
     print(f"\nsaved to {SAVE_DIR}")
 

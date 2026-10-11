@@ -46,6 +46,11 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:                 # once, at import -- not per call
     sys.path.append(str(_ROOT))
 
+# ----
+# Trigger Count
+# ---- 
+
+TRIGGER_CONFIRM_DAYS = 3    # a flip counts once it has held this many trading days in a row
 
 # ----
 # Detector and series (set in the model file)
@@ -60,8 +65,7 @@ SERIES   = None         # see DETECTOR_SERIES; ignored for 'none'
 # (value at d uses data through d-1).
 DETECTOR_SERIES = {
     'changepoint': ('vix', 'gspc'),       # VIX breaks primary, GSPC robustness
-    'hmm':         ('gspc', 'vix'),       # S&P 500 returns as in the paper; the VIX-change
-                                          # HMM mostly catches short VIX jumps (check_hmm.py)
+    'hmm':         ('gspc', 'vix'),       # S&P 500 returns as in the paper
     'wasserstein': ('gspc_vix', 'gspc'),  # 2-d S&P 500 + VIX main, S&P 500 alone robustness
 }
 
@@ -168,9 +172,6 @@ def in_crisis(d) -> bool:
 # ----
 # Regime-triggered rebalancing (MVO / HRP, INTRA_TRIGGER = True)
 # ----
-
-TRIGGER_CONFIRM_DAYS = 3    # a flip counts once it has held this many trading days in a row
-
 
 def trigger_dates(calendar, scheduled, confirm_days: int = TRIGGER_CONFIRM_DAYS) -> pd.DatetimeIndex:
     '''

@@ -65,7 +65,7 @@ SERIES      = {'gspc_vix': ('^GSPC', '^VIX'),    # output tag -> parquet columns
                'gspc':     ('^GSPC',)}           # first column decides which cluster is crisis
 H1          = 21        # window length in days (one month)
 H2          = 20        # overlap: scored windows slide by H1 - H2 = 1 day
-TRAIN_STEP  = 5         # training uses every 5th window (lift (21, 16)); the pairwise
+TRAIN_STEP  = 1         # training uses every 5th window (lift (21, 16)); the pairwise
                         # distance matrix grows with the square of the window count
 K           = 2         # calm / crisis
 N_INIT      = 10        # k-means++ starts per refit, lowest total distance kept
@@ -75,7 +75,7 @@ N_JOBS      = -1
 
 HERE      = Path(__file__).resolve().parent
 DATA_PATH = HERE.parents[1] / '_database' / 'regimes_data_log.parquet'
-OUT_DIR   = HERE / 'regimes_final_5'
+OUT_DIR   = HERE / 'regimes_final'
 
 
 # ----

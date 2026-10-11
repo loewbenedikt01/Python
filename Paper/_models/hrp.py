@@ -15,10 +15,13 @@ Algorithm, over that year's investable universe:
 Regime run
 ----------
 HRP in calm; when p_crisis > regime_def.CRISIS_THRESHOLD the portfolio
-switches to inverse-variance weights.  HRP has no expected-return input, so
-the defensive analogue of MVO's switch to minimum variance is to drop the
-clustering and allocate on variances alone: the correlation structure HRP
-relies on is what degrades when correlations converge in a crisis.
+switches to CRISIS_PORTFOLIO:
+  'min_var'  minimum-variance portfolio under the same weight box, the same
+             crisis portfolio as in mvo.py (same covariance estimator), so both
+             allocators follow one defensive rule;
+  'ivp'      inverse-variance weights.  Ignores correlations, so it is not more
+             defensive than HRP: in the 2026-10-04 runs it raised volatility
+             slightly and lowered Sharpe for every detector.
 
 -> Before Running: 
     Things to adjust
@@ -28,7 +31,10 @@ relies on is what degrades when correlations converge in a crisis.
     
     Two run options (set in the Regime block below):
         DETECTOR = 'none'                 baseline: HRP at every rebalance
-        DETECTOR = <detector> + SERIES    regime run: HRP in calm, inverse-variance in crisis
+        DETECTOR = <detector> + SERIES    regime run: HRP in calm, CRISIS_PORTFOLIO in crisis
+    extension of the regime run:
+        INTRA_TRIGGER = True              the regime is also checked daily; a flip between
+                                          scheduled dates triggers an extra rebalance
     SERIES per detector: changepoint 'vix' | 'gspc', hmm 'gspc' | 'vix',
     wasserstein 'gspc_vix' | 'gspc'.  One detector/series per run.
 '''
@@ -40,6 +46,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage
+from scipy.optimize import minimize
 from scipy.spatial.distance import squareform
 from sklearn.covariance import LedoitWolf
 
@@ -61,21 +68,28 @@ from config import (
 )
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
 
-# ----
-# Variables
-# ----
-
-COV_METHOD = 'lw'      # 'sample' | 'ledoit_wolf'   (match MVO)
-LINKAGE    = 'ward'             # 'single' | 'ward' | 'average'
 
 # ----
-# Regime implementation
+# Variables and Regime implementation
 # ----
 
-regime_def.DETECTOR = 'wasserstein'     # 'none' | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES   = 'gspc_vix'       # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.DETECTOR = 'hmm'        # 'none' | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES   = 'gspc'          # standard:
+                                    # changepoint 'vix' | hmm 'gspc' | wasserstein 'gspc_vix'
+                                    # robustness:
+                                    # changepoint 'gspc' | hmm 'vix' | wasserstein 'gspc'
+COV_METHOD          = 'lw'          # 'sample' | 'ledoit_wolf'
+CRISIS_PORTFOLIO    = 'min_var'     # 'min_var' = standard | 'ivp' = robustness
+LINKAGE             = 'ward'        # 'ward' = standard | 'single' | 'average'
+INTRA_TRIGGER       = False         # False = rebalancing dates check for regimes
+                                    # True = daily check for regimes interrupting rebalancing dates
 
-MODEL_NAME = f'hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}{regime_def.run_tag()}'
+if INTRA_TRIGGER and regime_def.DETECTOR == 'none':
+    raise ValueError('[hrp] INTRA_TRIGGER needs a regime run: set regime_def.DETECTOR')
+_crisis_tag = '' if regime_def.DETECTOR == 'none' or CRISIS_PORTFOLIO == 'min_var' else '_ivp'
+_trig_tag   = '_trig' if INTRA_TRIGGER else ''
+MODEL_NAME = (f'hrp_3d_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}'
+              f'{regime_def.run_tag()}{_crisis_tag}{_trig_tag}')
 
 FREQUENCIES = [
     'Monthly',
@@ -85,15 +99,14 @@ FREQUENCIES = [
 
 
 # ----
-# Moments  (identical to mvo.py -- keep the two in sync so HRP and MVO are
-# fed the same Sigma^; then any gap between them is the allocation rule alone)
+# Moments
 # ----
 
 def _moments(win: pd.DataFrame, w: np.ndarray | None = None):
     '''
     (mu, Sigma) from daily log returns, optionally with per-day weights w.
     Rows are centred and scaled by sqrt(w) before Ledoit-Wolf, so the shrinkage
-    intensity is estimated on the weighted sample -- it responds to the
+    intensity is estimated on the weighted sample - it responds to the
     effective rather than the nominal sample size.
     '''
     X = win.to_numpy()
@@ -114,7 +127,9 @@ def _moments(win: pd.DataFrame, w: np.ndarray | None = None):
 # ----
 
 def _quasi_diag(link: np.ndarray) -> list[int]:
-    '''Dendrogram leaf order (López de Prado, snippet 16.2).'''
+    '''
+    Dendrogram leaf order (López de Prado, snippet 16.2).
+    '''
     link = link.astype(int)
     n = link[-1, 3]
     sort_ix = pd.Series([link[-1, 0], link[-1, 1]])
@@ -159,6 +174,31 @@ def _hrp_weights(cov: np.ndarray, corr: np.ndarray, method: str) -> np.ndarray:
     link = linkage(squareform(dist, checks=False), method=method)
     return _recursive_bisection(cov, _quasi_diag(link))
 
+def _min_variance(cov: np.ndarray) -> np.ndarray | None:
+    '''
+    Long-only minimum variance under the weight box
+    '''
+    n = cov.shape[0]
+    lo, hi = _weight_box(n)
+    x0 = np.clip(np.full(n, 1.0 / n), lo, hi)
+    res = minimize(
+        lambda w: float(w @ cov @ w), x0, method='SLSQP',
+        bounds=[(lo, hi)] * n,
+        constraints=({'type': 'eq', 'fun': lambda w: w.sum() - 1.0},),
+        options={'maxiter': 500, 'ftol': 1e-12},
+    )
+    if not res.success:
+        return None
+    w = np.clip(res.x, lo, hi)
+    return w / w.sum() if w.sum() > 0 else None
+
+def _crisis_weights(cov: np.ndarray) -> np.ndarray | None:
+    if CRISIS_PORTFOLIO == 'min_var':
+        return _min_variance(cov)
+    if CRISIS_PORTFOLIO == 'ivp':
+        return _ivp_weights(cov)
+    raise ValueError(f'unknown CRISIS_PORTFOLIO {CRISIS_PORTFOLIO!r}')
+
 def _ivp_weights(cov: np.ndarray) -> np.ndarray:
     ivp = 1.0 / np.diag(cov)
     return ivp / ivp.sum()
@@ -177,7 +217,9 @@ def _weight_box(n: int) -> tuple[float, float]:
     return lo, hi
 
 def _apply_box(w: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    '''Project long-only weights onto {lo <= w_i <= hi, sum w = 1} by water-filling.'''
+    '''
+    Project long-only weights onto {lo <= w_i <= hi, sum w = 1} by water-filling.
+    '''
     w = np.clip(w, 0.0, None)
     w = w / w.sum()
     for _ in range(100):
@@ -203,6 +245,8 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
     cal = prices.loc[START_DATE:END_DATE].index
     month_firsts = cal[~cal.to_period('M').duplicated()]
     reb_dates = month_firsts[month_firsts.month.isin(REBALANCE_MONTHS[frequency])]
+    triggers  = regime_def.trigger_dates(cal, reb_dates) if INTRA_TRIGGER else pd.DatetimeIndex([])
+    decide    = reb_dates.union(triggers)
 
     h = HORIZON_TRADING_DAYS[frequency]
     lookback = pd.DateOffset(months=LOOKBACK_MONTHS_HRP)
@@ -210,7 +254,7 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
     rows: dict[pd.Timestamp, pd.Series] = {}
     diag: dict[pd.Timestamp, dict] = {}
 
-    for d in reb_dates:
+    for d in decide:
         uni = [t for t in universe_for(d.year) if t in ret.columns]
         win = ret.loc[d - lookback:d, uni]
         if len(win) < MIN_OBS:
@@ -228,10 +272,11 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
             continue
         corr = cov / np.outer(sd, sd)
 
-        # regime run: inverse-variance when the holding period is classed crisis
         p_now  = regime_def.p_crisis(d)
         crisis = regime_def.in_crisis(d)
-        w = _ivp_weights(cov) if crisis else _hrp_weights(cov, corr, LINKAGE)
+        w = _crisis_weights(cov) if crisis else None
+        if w is None:
+            w = _hrp_weights(cov, corr, LINKAGE)
         if not np.all(np.isfinite(w)) or w.sum() <= 0:
             continue
 
@@ -239,10 +284,13 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
         rows[d] = pd.Series(w, index=keep)
         diag[d] = {'p_crisis': p_now, 'crisis': crisis,
                    'vol_ann': float(np.sqrt(np.diag(cov).mean() * 252 / h)),
-                   'avg_corr': float(corr[np.triu_indices_from(corr, 1)].mean())}
+                   'avg_corr': float(corr[np.triu_indices_from(corr, 1)].mean()),
+                   'trigger': d in triggers}
 
-    return (pd.DataFrame(rows).T, len(reb_dates),
-            pd.DataFrame(diag).T.rename_axis('date'))
+    targets = pd.DataFrame(rows).T
+    triggers = triggers[triggers.isin(targets.index)]
+    return (targets, len(reb_dates),
+            pd.DataFrame(diag).T.rename_axis('date'), triggers)
 
 
 # ----
@@ -252,8 +300,9 @@ def hrp_targets(prices: pd.DataFrame, frequency: str):
 def main() -> None:
     prices = load_prices()
     for frequency in FREQUENCIES:
-        targets, n_dates, diag = hrp_targets(prices, frequency)
-        res = build_portfolio(targets, frequency=frequency, prices=prices)
+        targets, n_dates, diag, triggers = hrp_targets(prices, frequency)
+        res = build_portfolio(targets, frequency=frequency, prices=prices,
+                              extra_rebalances=triggers)
         name = f'hrp/{MODEL_NAME}_{frequency.lower()}'
 
         export.build_report(
@@ -272,7 +321,8 @@ def main() -> None:
         print(f'{name:40s} {len(res.log_returns):5d} days  '
               f'cum {np.expm1(res.log_returns.sum()):8.1%}  '
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
-              f'solved {len(targets)}/{n_dates}  inverse-variance (crisis) {n_cr}')
+              f'solved {len(targets) - len(triggers)}/{n_dates}  {CRISIS_PORTFOLIO} (crisis) {n_cr}'
+              + (f'  triggered {len(triggers)}' if INTRA_TRIGGER else ''))
 
 
 if __name__ == '__main__':
