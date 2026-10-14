@@ -1,27 +1,32 @@
 '''
 Feature definitions for the ML portfolio models (xgb / rf / lstm).
 
-`features(db, asof)` returns one row per ticker of 54 stock-level features,
-each ranked cross-sectionally on the as-of date (rank in [0, 1]; a missing
-value maps to 0.5, the neutral rank).
+'features(db, asof)' returns one row per ticker of 54 stock-level features,
+each ranked cross-sectionally on the as-of date (rank scaled to [0, 1]; a
+missing value maps to 0.5, the neutral rank).
 
-Everything is derived from the OHLCV panel in ``database.parquet`` (plus the
-``^GSPC`` series, used only as the market factor for beta / idiosyncratic
-features), so there is no look-ahead beyond `asof`: the caller passes the
-rebalance date and the frame is sliced to ``:asof`` first.
+Everything is derived from the OHLCV panel in ''database.parquet'' (plus the
+''^GSPC'' series, used only as the market factor for beta / idiosyncratic
+features), so there is no look-ahead beyond 'asof': the caller passes the
+rebalance date and the frame is sliced to '':asof'' first.
+
+Prices: returns and price ratios use split- and dividend-adjusted prices
+(Adj Close, O/H/L scaled by Adj Close / Close).  Dollar volume uses the raw
+Close (split-adjusted only, like Volume): the level of Adj Close on date d
+depends on dividends paid after d, so it must not enter a level feature.
 
 Feature groups
 --------------
 momentum / trend .... multi-horizon returns, 12-1 momentum, acceleration,
                       distance to 52w high/low, moving-average ratios, OLS
-                      trend t-stat / R^2, information discreteness
+                      trend slope-to-noise / R^2, information discreteness
 reversal ............ Bollinger position, MA z-score, RSI,
                       overnight vs intraday decomposition
 volatility .......... close-to-close vol (1/3/6/12m), Parkinson & Garman-Klass
-                      range vol, downside vol, realised skew / kurtosis,
-                      MAX / MIN daily return, vol-of-vol
+                      range vol, downside semi-deviation, realised skew /
+                      kurtosis, MAX / MIN daily return, vol-of-vol
 market risk ......... CAPM beta, downside beta, idiosyncratic vol, residual
-                      (idiosyncratic) momentum, average pairwise correlation
+                      (CAPM-adjusted) momentum, average pairwise correlation
 liquidity ........... Amihud illiquidity (1/6m), dollar volume level & trend,
                       volume shock, price-volume correlation
 tail / drawdown ..... historical VaR / CVaR (95%), max drawdown, Ulcer index,
@@ -37,14 +42,16 @@ try:
     from config import DATABASE_PATH, TRADING_DAYS_PER_YEAR
 except ImportError:
     DATABASE_PATH = None
+    TRADING_DAYS_PER_YEAR = 252
 
 # ----
 # Constants
 # ----
 ANN           = np.sqrt(TRADING_DAYS_PER_YEAR)
 MKT_TICKER    = '^GSPC'
-INDEX_TICKERS = ('^GSPC', '^VIX')         # not tradable — kept out of the cross-section
+INDEX_TICKERS = ('^GSPC', '^VIX')         # not tradable, kept out of the cross-section
 MIN_BARS      = 300                       # trailing bars the longest window needs
+SKIP          = 21                        # skip-month for 12-1 style windows
 
 
 # ----
@@ -52,25 +59,20 @@ MIN_BARS      = 300                       # trailing bars the longest window nee
 # ----
 
 def load_db(database_path=DATABASE_PATH) -> pd.DataFrame:
-    '''Full OHLCV panel, wide with a (field, ticker) column MultiIndex.'''
     db = pd.read_parquet(database_path).sort_index()
     db.index = pd.to_datetime(db.index)
     return db
 
-
 def _adjust_ohlc(db: pd.DataFrame) -> tuple[pd.DataFrame, ...]:
-    '''
-    Split/dividend-consistent OHLC: scale raw O/H/L by the Adj Close / Close
-    ratio and use Adj Close itself for the close.
-    '''
     close  = db['Close']
     adj    = db['Adj Close']
     factor = (adj / close).where(close > 0)
-    return db['Open'] * factor, db['High'] * factor, db['Low'] * factor, adj
+    o, h, l = (db[f].where(db[f] > 0) * factor for f in ('Open', 'High', 'Low'))
+    return o, h, l, adj
 
 
 # ----
-# Feature groups  (each returns dict[str, pd.Series] indexed by ticker)
+# Feature groups
 # ----
 
 def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
@@ -79,7 +81,7 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
 
     for name, n in [('mom_1w', 5), ('mom_2w', 10), ('mom_1m', 21),
                     ('mom_3m', 63), ('mom_6m', 126), ('mom_9m', 189)]:
-        f[name] = c.pct_change(n).iloc[-1]
+        f[name] = c.pct_change(n, fill_method=None).iloc[-1]
 
     f['mom_12_1']     = c.iloc[-22] / c.iloc[-253] - 1
     f['mom_12_1_lag'] = c.iloc[-43] / c.iloc[-274] - 1
@@ -96,7 +98,6 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
     f['ma_ratio_20_100'] = c.tail(20).mean()  / c.tail(100).mean() - 1
     f['px_vs_200dma']    = last / c.tail(200).mean() - 1
 
-    # OLS of log price on time over the last 126 sessions -> trend strength
     y   = np.log(c.tail(126).to_numpy())
     T   = y.shape[0]
     x   = np.arange(T, dtype=float)
@@ -113,14 +114,11 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
         ss_tot = np.nansum(yc ** 2, axis=0)
     f['trend_tstat_6m'] = pd.Series(slope / (sigma / np.sqrt(Sxx)), index=c.columns)
     f['trend_r2_6m']    = pd.Series(1.0 - ss_res / ss_tot, index=c.columns)
-
-    # information discreteness (Da, Gurun & Warachka): smooth momentum persists
-    r    = ret.tail(TRADING_DAYS_PER_YEAR)
+    r    = ret.iloc[-TRADING_DAYS_PER_YEAR:-SKIP]
     pos  = (r > 0).sum()
     neg  = (r < 0).sum()
     f['info_discreteness'] = np.sign(f['mom_12_1']) * ((neg - pos) / (pos + neg))
     return f
-
 
 def _reversal(c: pd.DataFrame, ret: pd.DataFrame, o: pd.DataFrame) -> dict:
     f: dict = {}
@@ -143,7 +141,6 @@ def _reversal(c: pd.DataFrame, ret: pd.DataFrame, o: pd.DataFrame) -> dict:
     f['overnight_share']  = on_c / (on_c.abs() + in_c.abs())
     return f
 
-
 def _volatility(ret: pd.DataFrame, o: pd.DataFrame, h: pd.DataFrame,
                 l: pd.DataFrame, c: pd.DataFrame) -> dict:
     f: dict = {}
@@ -160,11 +157,11 @@ def _volatility(ret: pd.DataFrame, o: pd.DataFrame, h: pd.DataFrame,
     f['garman_klass_1m'] = np.sqrt(gk.tail(21).mean().clip(lower=0)) * ANN
 
     r6 = ret.tail(126)
-    f['downside_vol_6m'] = r6.where(r6 < 0).std() * ANN
+    f['downside_vol_6m'] = np.sqrt((r6.clip(upper=0) ** 2).mean()) * ANN
     f['ret_skew_6m']     = r6.skew()
     f['ret_kurt_6m']     = r6.kurt()
 
-    f['max_ret_1m'] = ret.tail(21).max()          # Bali MAX effect
+    f['max_ret_1m'] = ret.tail(21).max()
     f['min_ret_1m'] = ret.tail(21).min()
 
     f['vol_of_vol_6m'] = ret.rolling(21).std().tail(126).std()
@@ -187,36 +184,37 @@ def _market_risk(logret: pd.DataFrame, mkt_ret: pd.Series, ret: pd.DataFrame) ->
         beta    = np.nansum(Xc[:, None] * (Y - np.nanmean(Y, 0)), 0) / Sxx
         resid   = Y - (np.nanmean(Y, 0) + beta[None, :] * Xc[:, None])
         idio    = np.sqrt(np.nanmean(resid ** 2, 0)) * ANN
-        # residual (idiosyncratic) momentum: cumulative residual up to t-21
-        cum_res = np.nancumsum(resid, 0)
-        resid_mom = cum_res[-22] if cum_res.shape[0] > 22 else np.full(Y.shape[1], np.nan)
-        # downside beta: regression restricted to down-market days
         dn      = X < 0
         Xd      = X[dn] - X[dn].mean()
         beta_dn = np.nansum(Xd[:, None] * (Y[dn] - np.nanmean(Y[dn], 0)), 0) / (Xd ** 2).sum()
+        Yf, Xf  = Y[:-SKIP], X[:-SKIP]
+        Xfc     = Xf - Xf.mean()
+        beta_f  = np.nansum(Xfc[:, None] * (Yf - np.nanmean(Yf, 0)), 0) / float((Xfc ** 2).sum())
+        e       = Yf - beta_f[None, :] * Xf[:, None]
+        n_f     = (~np.isnan(e)).sum(0)
+        resid_mom = np.nansum(e, 0) / (np.nanstd(e, 0, ddof=1) * np.sqrt(n_f))
 
     f['beta_12m']          = pd.Series(beta, idx)
     f['downside_beta_12m'] = pd.Series(beta_dn, idx)
     f['idio_vol_12m']      = pd.Series(idio, idx)
     f['resid_mom_12_1']    = pd.Series(resid_mom, idx)
 
-    cc = ret.tail(60).corr()
-    np.fill_diagonal(cc.values, np.nan)
-    f['avg_corr_60d'] = cc.mean()
+    cc = ret.tail(60).corr().to_numpy(copy=True)
+    np.fill_diagonal(cc, np.nan)
+    f['avg_corr_60d'] = pd.Series(np.nanmean(cc, axis=0), idx)
     return f
 
-
-def _liquidity(ret: pd.DataFrame, c: pd.DataFrame, vol: pd.DataFrame) -> dict:
+def _liquidity(ret: pd.DataFrame, close_raw: pd.DataFrame, vol: pd.DataFrame) -> dict:
     f: dict = {}
-    dollar = (c * vol).replace(0.0, np.nan)
+    dollar = (close_raw * vol).replace(0.0, np.nan)
     f['amihud_1m'] = (ret.abs().tail(21)  / dollar.tail(21)).mean()
     f['amihud_6m'] = (ret.abs().tail(126) / dollar.tail(126)).mean()
     f['dollar_vol_level'] = np.log(dollar.tail(21).mean())
     f['dollar_vol_trend'] = dollar.tail(21).mean() / dollar.tail(126).mean()
     f['volume_shock']     = vol.tail(5).mean() / vol.tail(60).mean()
-    f['pv_corr_1m']       = ret.tail(21).corrwith(vol.pct_change().tail(21))
+    dv = vol.pct_change(fill_method=None).replace([np.inf, -np.inf], np.nan)
+    f['pv_corr_1m']       = ret.tail(21).corrwith(dv.tail(21))
     return f
-
 
 def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
     f: dict = {}
@@ -242,17 +240,6 @@ def features(db: pd.DataFrame,
              universe: list | set | None = None,
              min_history: int = TRADING_DAYS_PER_YEAR,
              min_coverage: float = 0.9) -> pd.DataFrame:
-    '''
-    One row of cross-sectionally ranked features per ticker, as of `asof`
-    (default: last row of `db`).
-
-    `db` is the wide (field, ticker) OHLCV panel from `load_db`.  Tickers with
-    less than `min_coverage` of `min_history` recent closes are dropped; if
-    `universe` is given, ranking is restricted to those names (so ranks reflect
-    the investable set, not the full panel).  Every feature is rank-transformed
-    to [0, 1] across the surviving names, missing values filled at the neutral
-    rank 0.5.
-    '''
     if asof is not None:
         db = db.loc[:pd.Timestamp(asof)]
     if len(db) < MIN_BARS:
@@ -260,6 +247,7 @@ def features(db: pd.DataFrame,
 
     o_all, h_all, l_all, c_all = _adjust_ohlc(db)
     vol_all = db['Volume']
+    raw_all = db['Close'].where(db['Close'] > 0)
 
     tickers = [t for t in c_all.columns if t not in INDEX_TICKERS]
     if universe is not None:
@@ -275,8 +263,9 @@ def features(db: pd.DataFrame,
     h   = h_all[keep]
     l   = l_all[keep]
     vol = vol_all[keep]
+    raw = raw_all[keep]
 
-    ret    = c.pct_change()
+    ret    = c.pct_change(fill_method=None)
     logret = np.log(c / c.shift(1))
     mkt_ret = np.log(db[('Adj Close', MKT_TICKER)] / db[('Adj Close', MKT_TICKER)].shift(1))
 
@@ -285,19 +274,15 @@ def features(db: pd.DataFrame,
     cols.update(_reversal(c, ret, o))
     cols.update(_volatility(ret, o, h, l, c))
     cols.update(_market_risk(logret, mkt_ret, ret))
-    cols.update(_liquidity(ret, c, vol))
+    cols.update(_liquidity(ret, raw, vol))
     cols.update(_tail(ret, c))
 
     feat = pd.DataFrame(cols).replace([np.inf, -np.inf], np.nan)
-    feat = feat.rank(pct=True).reindex(index=keep).fillna(0.5)
+    rank = feat.rank()
+    feat = ((rank - 1) / (rank.count() - 1)).reindex(index=keep).fillna(0.5)
     feat.index.name = 'ticker'
     return feat
 
-
-# (db fingerprint, as-of, universe) -> ranked feature frame.  `features` is a
-# pure function of these, and callers that rebuild overlapping panels (e.g. a
-# walk-forward refit with a per-rebalance fixed universe) hit the same
-# (as-of, universe) pairs many times.  Cleared with `clear_feature_cache()`.
 _PANEL_CACHE: dict = {}
 _PANEL_CACHE_STATS = {'hits': 0, 'misses': 0}
 
@@ -305,17 +290,12 @@ _PANEL_CACHE_STATS = {'hits': 0, 'misses': 0}
 def _db_fingerprint(db: pd.DataFrame):
     return (id(db), len(db.columns), db.index[0], db.index[-1])
 
-
 def clear_feature_cache() -> None:
-    '''Drop the `features_panel` memo (call when `db` changes within a process).'''
     _PANEL_CACHE.clear()
     _PANEL_CACHE_STATS.update(hits=0, misses=0)
 
-
 def feature_cache_stats() -> dict:
-    '''Cumulative memo activity: {'hits', 'misses', 'size'}.'''
     return {**_PANEL_CACHE_STATS, 'size': len(_PANEL_CACHE)}
-
 
 def _features_cached(db: pd.DataFrame, asof: pd.Timestamp, universe) -> pd.DataFrame:
     key = (_db_fingerprint(db), asof,
@@ -324,28 +304,15 @@ def _features_cached(db: pd.DataFrame, asof: pd.Timestamp, universe) -> pd.DataF
     if hit is not None:
         _PANEL_CACHE_STATS['hits'] += 1
         return hit
-    result = features(db, asof=asof, universe=universe)      # may raise ValueError
+    result = features(db, asof=asof, universe=universe)
     _PANEL_CACHE[key] = result
     _PANEL_CACHE_STATS['misses'] += 1
     return result
 
-
 def features_panel(db: pd.DataFrame, dates, universe_fn=None,
                    universe: list | set | None = None) -> pd.DataFrame:
-    '''
-    Stack `features` over many as-of dates into a (date, ticker) MultiIndex
-    frame -- the training matrix for the ML models.  Dates without enough
-    history are skipped.
-
-    Cross-section control (give at most one):
-      * `universe`            -- one fixed set of names for every as-of date;
-      * `universe_fn(date)`   -- a per-date set (e.g. the universe of that year).
-    With neither, the full surviving panel is ranked.  Repeated
-    (as-of, universe) pairs are served from a process-level cache
-    (`clear_feature_cache()` to reset).
-    '''
     if universe is not None and universe_fn is not None:
-        raise ValueError('pass `universe` or `universe_fn`, not both')
+        raise ValueError('pass "universe" or "universe_fn", not both')
     fixed = None if universe is None else list(universe)
 
     frames: dict = {}
