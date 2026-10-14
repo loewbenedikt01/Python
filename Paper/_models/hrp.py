@@ -75,9 +75,9 @@ LINKAGE    = 'ward'             # 'single' | 'ward' | 'average'
 # Regime implementation
 # ----
 
-regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
-regime_def.CRISIS_TARGET = 'cash'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
+regime_def.DETECTOR      = 'changepoint'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = 'vix'     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'min_var'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
 
 MODEL_NAME = (f'hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}'
               + regime_def.check_run('hrp'))           # costs live in config.py

@@ -82,9 +82,9 @@ FREQUENCIES = [
 # Regime Implementation
 # ----
 
-regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
-regime_def.CRISIS_TARGET = 'cash'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
+regime_def.DETECTOR      = 'changepoint'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = 'vix'     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'min_var'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
 
 # Control run, not a regime run: minimum variance at every rebalance (needs
 # DETECTOR = 'none').  The static-mix control for the CRISIS_TARGET = 'min_var'
