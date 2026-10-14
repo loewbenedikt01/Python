@@ -1,16 +1,16 @@
 '''
 Long Short Term Memory (LSTM) — cross-sectional return forecast -> portfolio weights.
 
-Walk-forward, refit at every rebalance date `d` on point-in-time data:
+Walk-forward, refit at every rebalance date 'd' on point-in-time data:
   * WINDOW_MODE 'latest': the last TRAINING_MONTHS_LSTM months whose label has
-    resolved before `d`, no validation block (same as xgb.py / rf.py);
+    resolved before 'd', no validation block (same as xgb.py / rf.py);
     'holdout': TRAINING_MONTHS_LSTM months of training, an EMBARGO_MONTHS_LSTM
-    gap, then a VALIDATION_MONTHS_LSTM block ending at `d` (reporting only);
+    gap, then a VALIDATION_MONTHS_LSTM block ending at 'd' (reporting only);
   * TARGET 'rank': cross-sectional rank of the forward return within each
     date, centred to -0.5..0.5; 'return': forward return demeaned within date;
   * each sample is the SEQ_LEN consecutive monthly feature vectors ending at t;
-  * the feature panel is rebuilt per `d` with the cross-section pinned to
-    `universe_for(d.year)` — the same ~20 names for every training row;
+  * the feature panel is rebuilt per 'd' with the cross-section pinned to
+    'universe_for(d.year)' — the same ~20 names for every training row;
   * every (grid point, seed) in LSTM_GRID x BASE_SEED_LSTM is fit — no search,
     no selection — and the raw predictions are averaged over the whole
     ensemble, then ranked cross-sectionally and mapped to weights via the
@@ -18,11 +18,16 @@ Walk-forward, refit at every rebalance date `d` on point-in-time data:
 
 Reported specification count is 1 (the ensemble).  Output tree: _output/lstm/.
 
-    Two run options (set in the Regime block below):
+    Run options (set in the Regime block below):
         DETECTOR = 'none'                 baseline: no regime information
-        DETECTOR = <detector> + SERIES    regime run: the net learns with the interaction
-                                          features (rank - 0.5) * p_crisis and raw
-                                          p_crisis as an extra input channel
+        DETECTOR = <detector> + SERIES    regime run: the model is unchanged and holds
+                                          exactly the baseline's weights in calm; when
+                                          p_crisis > regime_def.CRISIS_THRESHOLD the
+                                          portfolio switches to CRISIS_TARGET:
+            CRISIS_TARGET = 'cash'        3-month T-bills
+            CRISIS_TARGET = 'hrp'         the HRP portfolio of hrp.py (hybrid run)
+    A regime run reads the baseline's weights from _output/<model>/_baseline_targets/
+    (regime_def.REUSE_BASELINE), so run the baseline first.
     SERIES per detector: changepoint 'vix' | 'gspc', hmm 'gspc' | 'vix',
     wasserstein 'gspc_vix' | 'gspc'.  One detector/series per run.
 '''
@@ -34,7 +39,7 @@ import sys
 import time
 from pathlib import Path
  
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'      # before importing tensorflow
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
  
 import numpy as np
 import pandas as pd
@@ -50,6 +55,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
  
 from _regimes import regime_def
 import export
+import hrp as hrp_model
 from config import (
     START_DATE,
     END_DATE,
@@ -73,7 +79,7 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-WINDOW_MODE  = 'latest'             # 'holdout' | 'latest'
+WINDOW_MODE  = 'holdout'             # 'holdout' | 'latest'
 TARGET       = 'rank'               # 'rank' | 'return'
 SEQ_LEN     = int(LSTM_FIXED['seq_len'])
 SEEDS       = list(BASE_SEED_LSTM)   # LSTM seed variance is large
@@ -91,26 +97,15 @@ FREQUENCIES = [
 # Regime implementation
 # ----
  
-regime_def.DETECTOR = 'changepoint'     # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES   = 'vix'       # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'cash'   # 'cash' | 'hrp' (hybrid): held when in crisis
+RUN_TAG = regime_def.check_run('lstm')
 
-MODEL_NAME = f'lstm_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}{regime_def.run_tag()}'
+BASE_NAME  = f'lstm_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}'
+MODEL_NAME = BASE_NAME + RUN_TAG
 
 
-def _add_pcrisis(panel: pd.DataFrame) -> pd.DataFrame:
-    '''
-    Regime run only: raw p_crisis as an input channel per timestep.  A neural
-    net can learn interactions itself and p_crisis varies along the sequence.
-    Not added for the baseline: even an all-zero column would change the weight
-    initialisation draws.
-    '''
-    if regime_def.DETECTOR == 'none':
-        return panel
-    dates = panel.index.get_level_values('date')
-    pc = regime_def.regime_probs(dates.unique())['p_crisis'].reindex(dates).to_numpy()
-    return panel.assign(p_crisis=pc)
- 
- 
 # ----
 # Weight box  (water-filling projection onto {lo <= w_i <= hi, sum w = 1})
 # ----
@@ -325,11 +320,9 @@ def _state(frequency: str):
     return _STATE[frequency]
  
  
-def _date_job(frequency: str, d, tr_months, va_months, regime=('none', None)) -> dict:
+def _date_job(frequency: str, d, tr_months, va_months) -> dict:
     '''Everything for one rebalance date up to the raw prediction.
     Returns a plain dict (picklable); weights are built in the main process.'''
-    # a fresh worker starts from regime_def's defaults; re-select the run's choice
-    regime_def.DETECTOR, regime_def.SERIES = regime
     t0 = time.time()
     db, fwd_stack, train_firsts = _state(frequency)
     tf_months = train_firsts.to_period('M')
@@ -343,7 +336,6 @@ def _date_job(frequency: str, d, tr_months, va_months, regime=('none', None)) ->
         panel = features_panel(db, want, universe=uni_year)
     except ValueError:
         return {'d': d, 'reject': 'no feature rows in window'}
-    panel = _add_pcrisis(regime_def.add_regime_features(panel))     # regime run only
     cols = list(panel.columns)
     if d not in panel.index.get_level_values('date'):
         return {'d': d, 'reject': 'no feature panel row at d'}
@@ -455,20 +447,22 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     t_start = time.time()
     with ProcessPoolExecutor(max_workers=N_WORKERS, max_tasks_per_child=1,
                              initializer=_worker_init) as ex:
-        regime = (regime_def.DETECTOR, regime_def.SERIES)
-        futs = {ex.submit(_date_job, frequency, d, tr, va, regime): d for d, tr, va in todo}
+        futs = {ex.submit(_date_job, frequency, d, tr, va): d for d, tr, va in todo}
         for k, f in enumerate(as_completed(futs), 1):
             r = f.result()
             results[r['d']] = r
             elapsed = time.time() - t_start
             eta = elapsed / k * (len(todo) - k)
+            d_r = r['d']
             if 'reject' in r:
-                msg = f'REJECTED ({r['reject']})'
+                msg = 'REJECTED ({})'.format(r['reject'])
             else:
-                msg = (f'train={r['n_tr']}mo/{r['n_seq']}seq val={r['n_va']}mo  '
-                       f'{_fmt(r['dt'])}  valIC={r['val_ic']:+.3f}'
-                       + (f' filled={r['n_filled']}' if r['n_filled'] else ''))
-            print(f'[lstm] {frequency} {r['d'].date()}  {k:>3}/{len(todo)}  {msg}  '
+                n_tr, n_seq, n_va, dt, val_ic, n_filled = (
+                    r['n_tr'], r['n_seq'], r['n_va'], r['dt'], r['val_ic'], r['n_filled'])
+                msg = (f'train={n_tr}mo/{n_seq}seq val={n_va}mo  '
+                       f'{_fmt(dt)}  valIC={val_ic:+.3f}'
+                       + (f' filled={n_filled}' if n_filled else ''))
+            print(f'[lstm] {frequency} {d_r.date()}  {k:>3}/{len(todo)}  {msg}  '
                   f'elapsed {_fmt(elapsed)} / ETA {_fmt(eta)}', flush=True)
  
     # ---- pass 2b: weights in date order
@@ -545,14 +539,29 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
  
 def main() -> None:
     prices = load_prices()
-    db = load_db()
- 
+    ret = np.log(prices / prices.shift(1))
+    db = None
+
     print(f'[lstm] ensemble (no selection): {len(GRID)} configs x {len(SEEDS)} seeds '
           f'= {FITS_PER_DATE} nets/date; window={WINDOW_MODE}; seq_len={SEQ_LEN}; '
           f'{N_WORKERS} workers', flush=True)
- 
+
     for frequency in FREQUENCIES:
-        targets, n_dates, diagnostics = lstm_targets(db, prices, frequency)
+        def train():
+            nonlocal db
+            if db is None:
+                db = load_db()
+            return lstm_targets(db, prices, frequency)
+
+        # the model's own weights at its scheduled dates (stored by the baseline)
+        model_targets, n_dates, diagnostics = regime_def.ml_targets('lstm', BASE_NAME, frequency, train)
+
+        # regime run: the whole portfolio goes to CRISIS_TARGET when in crisis
+        months = _month_firsts(prices, START_DATE)
+        scheduled = months[months.month.isin(REBALANCE_MONTHS[frequency])]
+        targets, regime = regime_def.ml_overlay(
+            model_targets, scheduled,
+            crisis_fn=lambda d: hrp_model.hrp_weights(ret, d, frequency))
         res = build_portfolio(targets, frequency=frequency, prices=prices)
         name = f'lstm/{MODEL_NAME}_{frequency.lower()}'
 
@@ -565,6 +574,7 @@ def main() -> None:
             diagnostics={
                 'turnover': res.turnover,
                 'transaction_costs': res.transaction_costs,
+                'regime': regime,
                 **diagnostics,
             },
         )
@@ -573,7 +583,8 @@ def main() -> None:
         print(f'{name:40s} {len(res.log_returns):5d} days  '
               f'cum {np.expm1(res.log_returns.sum()):8.1%}  '
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
-              f'solved {len(targets)}/{n_dates}  mean IC {ic:+.3f}')
+              f'solved {len(model_targets)}/{n_dates}  mean IC {ic:+.3f}  held: '
+              + ', '.join(f'{k} {v}' for k, v in regime['holding'].value_counts().items()))
  
  
 if __name__ == '__main__':

@@ -1,11 +1,11 @@
 '''
 Random Forest — cross-sectional return forecast -> portfolio weights.
 
-Walk-forward, refit at every rebalance date `d` on point-in-time data:
+Walk-forward, refit at every rebalance date 'd' on point-in-time data:
   * fixed rolling window (no expansion): TRAINING_MONTHS_RF months of training,
-    an EMBARGO_MONTHS_RF gap, then a VALIDATION_MONTHS_RF block ending at `d`;
-  * the feature panel is rebuilt per `d` with the cross-section pinned to
-    `universe_for(d.year)` — the same ~20 names for every training row;
+    an EMBARGO_MONTHS_RF gap, then a VALIDATION_MONTHS_RF block ending at 'd';
+  * the feature panel is rebuilt per 'd' with the cross-section pinned to
+    'universe_for(d.year)' — the same ~20 names for every training row;
   * every (grid point, seed) in RF_GRID x BASE_SEED is fit — no search, no
     selection — and the raw predictions are averaged over the whole ensemble,
     then ranked cross-sectionally and mapped to weights via the config weight
@@ -13,10 +13,16 @@ Walk-forward, refit at every rebalance date `d` on point-in-time data:
 
 Reported specification count is 1 (the ensemble).  Output tree: _output/rf/.
 
-    Two run options (set in the Regime block below):
+    Run options (set in the Regime block below):
         DETECTOR = 'none'                 baseline: no regime information
-        DETECTOR = <detector> + SERIES    regime run: the model learns with the interaction
-                                          features (rank - 0.5) * p_crisis
+        DETECTOR = <detector> + SERIES    regime run: the model is unchanged and holds
+                                          exactly the baseline's weights in calm; when
+                                          p_crisis > regime_def.CRISIS_THRESHOLD the
+                                          portfolio switches to CRISIS_TARGET:
+            CRISIS_TARGET = 'cash'        3-month T-bills
+            CRISIS_TARGET = 'hrp'         the HRP portfolio of hrp.py (hybrid run)
+    A regime run reads the baseline's weights from _output/<model>/_baseline_targets/
+    (regime_def.REUSE_BASELINE), so run the baseline first.
     SERIES per detector: changepoint 'vix' | 'gspc', hmm 'gspc' | 'vix',
     wasserstein 'gspc_vix' | 'gspc'.  One detector/series per run.
 '''
@@ -37,6 +43,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from _regimes import regime_def
 import export
+import hrp as hrp_model
 from config import (
     START_DATE,
     END_DATE,
@@ -49,7 +56,6 @@ from config import (
     BASE_SEED,
     RF_FIXED,
     RF_GRID,
-    TRANSACTION_COST_BPS,
 )
 from features import load_db, features_panel, feature_cache_stats
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
@@ -58,8 +64,9 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-WINDOW_MODE     = 'latest'          # 'holdout' | 'latest'
-TARGET          = 'rank'            # 'return'
+MODEL_NAME   = 'rf_no_t_h'        # change per run
+WINDOW_MODE  = 'holdout'         # 'holdout' | 'latest'
+
 FREQUENCIES = [
     #'Monthly',
     'Quarterly',
@@ -71,13 +78,13 @@ FREQUENCIES = [
 # Regime implementation
 # ----
 
-regime_def.DETECTOR = 'none'     # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES   = None       # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
-
-MODEL_NAME = f'rf_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}{regime_def.run_tag()}'
+regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'cash'   # 'cash' | 'hrp' (hybrid): held when in crisis
+RUN_TAG = regime_def.check_run('rf')
 
 # ----
-# Weight Constraints
+# Weight box  (water-filling projection onto {lo <= w_i <= hi, sum w = 1})
 # ----
 
 def _weight_box(n: int) -> tuple[float, float]:
@@ -195,7 +202,7 @@ def _train(X_tr, y_tr, X_val, y_val):
     '''
     Fit every (grid point, seed) in GRID x BASE_SEED and keep them all — no
     search, no selection.  Inference averages the raw predictions across the
-    whole ensemble (`_predict`); the validation block is used only to report
+    whole ensemble ('_predict'); the validation block is used only to report
     ensemble val R^2 / rank IC, never to pick anything.  Every model runs the
     full RF_FIXED['n_estimators'] rounds (no early stopping), so there is no
     per-model tree count to record.  Returns (models, ensemble val_r2, ensemble
@@ -249,9 +256,9 @@ def train_start(frequency: str, mode: str = 'holdout', seq_len: int = 1,
 
 def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     '''
-    One RF target-weight row per rebalance date for `frequency`, plus a dict of
+    One RF target-weight row per rebalance date for 'frequency', plus a dict of
     per-date diagnostics frames.  The feature panel is rebuilt per rebalance
-    date `d` with the cross-section pinned to `universe_for(d.year)` — the same
+    date 'd' with the cross-section pinned to 'universe_for(d.year)' — the same
     ~20 names for every training row — so ranks match the set actually traded.
     '''
     h = HORIZON_TRADING_DAYS[frequency]
@@ -268,10 +275,8 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 
     def _slice(panel, panel_dates, months):
         sub = panel[panel_dates.isin(months)]
-        y = fwd_stack.reindex(sub.index).dropna()
-        if TARGET == 'rank':
-            y = y.groupby(level='date').rank(pct=True) - 0.5
-        return sub.loc[y.index], y
+        y = fwd_stack.reindex(sub.index)
+        return sub[y.notna()], y.dropna()
 
     rows:  dict[pd.Timestamp, pd.Series] = {}
     preds: dict[pd.Timestamp, pd.Series] = {}
@@ -320,7 +325,6 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
         except ValueError:
             reject[d] = 'no feature rows in window'
             continue
-        panel = regime_def.add_regime_features(panel)       # regime run only
         feat_cols = list(panel.columns)
         panel_dates = panel.index.get_level_values('date')
         if d not in panel_dates:
@@ -386,8 +390,9 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
     cs = feature_cache_stats()
     looked = cs['hits'] + cs['misses']
     if looked:
-        print(f'[rf] {frequency}: feature panel cache {cs['hits']}/{looked} hits '
-              f'({cs['hits'] / looked:.0%}), {cs['size']} unique (as-of, universe) frames '
+        hits, size = cs['hits'], cs['size']
+        print(f'[rf] {frequency}: feature panel cache {hits}/{looked} hits '
+              f'({hits / looked:.0%}), {size} unique (as-of, universe) frames '
               f'built (cumulative over run)')
 
     # ── out-of-sample skill
@@ -398,7 +403,6 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             continue
         realized = realized - realized.mean()
         p, r = pred.reindex(realized.index), realized
-        p = p - p.mean()
         r2_oos[d] = 1.0 - float(np.sum((r - p) ** 2) / np.sum(r ** 2))
         rho, pv = spearmanr(p, r)
         sp_rho[d], sp_p[d] = float(rho), float(pv)
@@ -426,16 +430,31 @@ def rf_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
 
 def main() -> None:
     prices = load_prices()
-    db = load_db()
+    ret = np.log(prices / prices.shift(1))
+    db = None
 
     print(f'[rf] ensemble (no selection): {len(GRID)} configs x {len(BASE_SEED)} seeds '
           f'= {FITS_PER_DATE} models averaged per rebalance date; panel rebuilt per '
           f'rebalance date on universe_for(year)', flush=True)
 
     for frequency in FREQUENCIES:
-        targets, n_dates, diagnostics = rf_targets(db, prices, frequency)
+        def train():
+            nonlocal db
+            if db is None:
+                db = load_db()
+            return rf_targets(db, prices, frequency)
+
+        # the model's own weights at its scheduled dates (stored by the baseline)
+        model_targets, n_dates, diagnostics = regime_def.ml_targets('rf', MODEL_NAME, frequency, train)
+
+        # regime run: the whole portfolio goes to CRISIS_TARGET when in crisis
+        months = _month_firsts(prices, START_DATE)
+        scheduled = months[months.month.isin(REBALANCE_MONTHS[frequency])]
+        targets, regime = regime_def.ml_overlay(
+            model_targets, scheduled,
+            crisis_fn=lambda d: hrp_model.hrp_weights(ret, d, frequency))
         res = build_portfolio(targets, frequency=frequency, prices=prices)
-        name = f'rf/{MODEL_NAME}_{frequency.lower()}'
+        name = f'rf/{MODEL_NAME}{RUN_TAG}_{frequency.lower()}'
 
         export.build_report(
             name,
@@ -446,6 +465,7 @@ def main() -> None:
             diagnostics={
                 'turnover': res.turnover,
                 'transaction_costs': res.transaction_costs,
+                'regime': regime,
                 **diagnostics,
             },
         )
@@ -454,7 +474,8 @@ def main() -> None:
         print(f'{name:40s} {len(res.log_returns):5d} days  '
               f'cum {np.expm1(res.log_returns.sum()):8.1%}  '
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
-              f'solved {len(targets)}/{n_dates}  mean IC {ic:+.3f}')
+              f'solved {len(model_targets)}/{n_dates}  mean IC {ic:+.3f}  held: '
+              + ', '.join(f'{k} {v}' for k, v in regime['holding'].value_counts().items()))
 
 
 if __name__ == '__main__':

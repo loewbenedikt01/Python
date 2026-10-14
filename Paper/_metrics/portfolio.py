@@ -1,6 +1,10 @@
 
 '''
-Portfolio construction
+Portfolio construction — the shared mechanic every model feeds into.
+
+Target weights may hold a CASH column (regime_def.CASH): 3-month T-bills,
+earning risk_free.rf_daily each day.  Trading costs and turnover count the
+stock legs only; buying or selling T-bills is free.
 '''
 
 from __future__ import annotations
@@ -17,7 +21,10 @@ from config import (
     START_DATE,
     END_DATE,
 )
+from risk_free_rate import rf_daily
 from universe import tickers as UNIVERSE
+
+CASH = 'CASH'
 
 _UNI_YEARS = sorted(UNIVERSE)
 
@@ -89,7 +96,7 @@ def _rebalance_dates(
 ) -> pd.DatetimeIndex:
     '''
     First trading day of each qualifying month for 'frequency'.  When
-    `valid_price` is given, a candidate day with fewer priced tickers than a day
+    'valid_price' is given, a candidate day with fewer priced tickers than a day
     within the next REBALANCE_FALLBACK_DAYS trading days is bumped to that
     better-covered day (ties keep the earlier date).
     '''
@@ -133,9 +140,9 @@ def _resolve_targets(
             uni = _universe_for(d.year)
             priced = valid_price.loc[d]
             row = tw.iloc[pos].dropna()
-            row = row[[c for c in row.index if c in uni]]
+            row = row[[c for c in row.index if c in uni or c == CASH]]
             row = row[row.abs() > 0]
-            row = row[[t for t in row.index if bool(priced.get(t, False))]]
+            row = row[[t for t in row.index if t == CASH or bool(priced.get(t, False))]]
             if len(row) > MAX_HOLDINGS:
                 row = row[row.abs().sort_values(ascending=False).index[:MAX_HOLDINGS]]
 
@@ -199,6 +206,8 @@ def build_portfolio(
     end = pd.Timestamp(end) if end is not None else min(px.index.max(), pd.Timestamp(END_DATE))
 
     cal = px.loc[start:end].index
+    if CASH in target_weights.columns:          # T-bill position of the regime runs
+        asset_ret[CASH] = np.expm1(rf_daily(cal)).reindex(asset_ret.index)
     rebs = _rebalance_dates(cal, frequency, px.notna())
     if extra_rebalances is not None and len(extra_rebalances):
         extra = pd.DatetimeIndex(extra_rebalances)
@@ -219,7 +228,7 @@ def build_portfolio(
     # first rebalance: deploy from cash on d0's close
     d0 = reb_list[0]
     held = tgt.loc[d0].copy()
-    turnover[d0] = float(held.abs().sum())                 # == 1.0
+    turnover[d0] = float(held.drop(CASH, errors='ignore').abs().sum())   # == 1.0 unless cash
     txn_cost[d0] = turnover[d0] * cost_rate
     ret_parts.append(pd.Series([-txn_cost[d0]], index=[d0]))
 
@@ -241,7 +250,7 @@ def build_portfolio(
 
         if j + 1 < len(reb_list):                                 # rebalance at d_next close
             w_new = tgt.loc[d_next]
-            to = float((w_new - drifted).abs().sum())
+            to = float((w_new - drifted).drop(CASH, errors='ignore').abs().sum())   # stock legs
             turnover[d_next] = to
             txn_cost[d_next] = to * cost_rate
             port_r.loc[d_next] -= txn_cost[d_next]
@@ -284,7 +293,8 @@ if __name__ == '__main__':
 
     for frequency in REBALANCE_MONTHS:
         res = build_portfolio(equal_weight, frequency=frequency)
+        n_cf = int(res.rebalance_status.eq('carried_forward').sum())
         print(f'{frequency:10s} {len(res.log_returns):5d} days  '
               f'cum {np.expm1(res.log_returns.sum()):8.2%}  '
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
-              f'carried_forward {int(res.rebalance_status.eq('carried_forward').sum())}')
+              f'carried_forward {n_cf}')

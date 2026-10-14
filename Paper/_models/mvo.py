@@ -1,5 +1,5 @@
 '''
-Mean-Variance Optimization - Max Sharpe
+Mean-Variance Optimization — maximum-Sharpe (tangency) portfolio.
 
 At each rebalance the forecast horizon equals the rebalance interval: Monthly
 rebalances 'predict' one month ahead, Quarterly one quarter, Yearly one full
@@ -25,15 +25,16 @@ The covariance estimator is switchable in the Variables block below:
             [0 | 10 | 20]
     Do not run each Mode with different Transaction costs. Calculate the Transaction costs impact across a small mode and then further document.
     
-    Two run options (set in the Regime block below):
+    Run options (set in the Regime block below):
         DETECTOR = 'none'                 baseline: max-Sharpe at every rebalance
-        DETECTOR = <detector> + SERIES    regime run: max-Sharpe in calm, minimum-variance
-                                          when p_crisis > regime_def.CRISIS_THRESHOLD
+        DETECTOR = <detector> + SERIES    regime run: max-Sharpe in calm; when
+                                          p_crisis > regime_def.CRISIS_THRESHOLD the
+                                          portfolio switches to CRISIS_TARGET:
+            CRISIS_TARGET = 'cash'        3-month T-bills (main)
+            CRISIS_TARGET = 'min_var'     minimum variance (robustness)
     plus one control run:
         DETECTOR = 'none' + ALWAYS_MIN_VAR = True    minimum variance at every rebalance
-    and one extension of the regime run:
-        INTRA_TRIGGER = True              the regime is also checked daily; a flip between
-                                          scheduled dates triggers an extra rebalance
+                                          (the static-mix control for CRISIS_TARGET = 'min_var')
     SERIES per detector: changepoint 'vix' | 'gspc', hmm 'gspc' | 'vix',
     wasserstein 'gspc_vix' | 'gspc'.  One detector/series per run.
 '''
@@ -65,33 +66,37 @@ from config import (
 from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONTHS
 from risk_free_rate import rf_daily
 
-
 # ----
-# Variables and Regime Implementation
+# Variables
 # ----
 
-regime_def.DETECTOR = 'none'        # 'none' | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES   = None          # standard:
-                                    # changepoint 'vix' | hmm 'gspc' | wasserstein 'gspc_vix'
-                                    # robustness:
-                                    # changepoint 'gspc' | hmm 'vix' | wasserstein 'gspc'
-COV_METHOD          = 'lw'          # 'lw' = 'ledoit_wolf' = standard | 'sample'
-ALWAYS_MIN_VAR      = False         # False = standard; Control run for single min-variance portfolio | True = run min-variance with regimes 'none' and None
-INTRA_TRIGGER       = False         # False = rebalancing dates check for regimes, keep it that way for the paper
-                                    # True = daily check for regimes interrupting rebalancing dates
-
-if ALWAYS_MIN_VAR and regime_def.DETECTOR != 'none':
-    raise ValueError('[mvo] ALWAYS_MIN_VAR is a control run: set regime_def.DETECTOR = "none"')
-if INTRA_TRIGGER and regime_def.DETECTOR == 'none':
-    raise ValueError('[mvo] INTRA_TRIGGER needs a regime run: set regime_def.DETECTOR')
-_run = '_minvar' if ALWAYS_MIN_VAR else regime_def.run_tag() + ('_trig' if INTRA_TRIGGER else '')
-MODEL_NAME = f'mvo_3d_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}'
+COV_METHOD = 'lw'           # 'sample' | 'lw' = 'ledoit_wolf'
 
 FREQUENCIES = [
     'Monthly',
     'Quarterly',
     'Yearly',
 ]
+
+# ----
+# Regime Implementation
+# ----
+
+regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'cash'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
+
+# Control run, not a regime run: minimum variance at every rebalance (needs
+# DETECTOR = 'none').  The static-mix control for the CRISIS_TARGET = 'min_var'
+# runs in compare_runs.py.
+ALWAYS_MIN_VAR = False
+
+if ALWAYS_MIN_VAR and regime_def.DETECTOR != 'none':
+    raise ValueError('[mvo] ALWAYS_MIN_VAR is a control run: set regime_def.DETECTOR to none')
+_run = '_minvar' if ALWAYS_MIN_VAR else regime_def.check_run('mvo')
+
+MODEL_NAME = f'mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}'   # costs live in config.py
+
 
 # ----
 # Moments
@@ -166,52 +171,63 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
     cal = prices.loc[START_DATE:END_DATE].index
     month_firsts = cal[~cal.to_period('M').duplicated()]
     reb_dates = month_firsts[month_firsts.month.isin(REBALANCE_MONTHS[frequency])]
-    triggers  = regime_def.trigger_dates(cal, reb_dates) if INTRA_TRIGGER else pd.DatetimeIndex([])
-    decide    = reb_dates.union(triggers)
- 
+
     h = HORIZON_TRADING_DAYS[frequency]
     lookback = pd.DateOffset(months=LOOKBACK_MONTHS_MVO)
- 
-    rows:   dict[pd.Timestamp, pd.Series] = {}
+
     method: dict[pd.Timestamp, str] = {}
-    diag:   dict[pd.Timestamp, dict] = {}
- 
-    for d in decide:
+    extra:  dict[pd.Timestamp, dict] = {}
+
+    def _estimate(d):
         uni = [t for t in universe_for(d.year) if t in ret.columns]
         win = ret.loc[d - lookback:d, uni]
         if len(win) < MIN_OBS:
-            continue
+            return None
         keep = win.columns[win.notna().sum() >= MIN_DATA * len(win)]
         win = win[keep].dropna(how='any')
         if len(keep) < 2 or len(win) < MIN_OBS:
-            continue
- 
+            return None
+        # expected excess return over the holding period: daily log rf in
+        # force at d (last T-bill quote before d), same units as mu_d
         mu_d, cov_d = _moments(win)
         rf_d = float(rf_daily([d]).iloc[0])
-        mu  = (mu_d - rf_d) * h
         cov = cov_d * h
+        extra[d] = {'vol_ann': float(np.sqrt(np.diag(cov).mean() * 252 / h)),
+                    'rf_ann': rf_d * 252}
+        return keep, (mu_d - rf_d) * h, cov
 
-        p_now  = regime_def.p_crisis(d)
-        crisis = regime_def.in_crisis(d)
-        w = None if (crisis or ALWAYS_MIN_VAR) else _max_sharpe(mu, cov)
+    def calm(d):
+        '''Max-Sharpe (min variance if ill-defined; always for ALWAYS_MIN_VAR).'''
+        est = _estimate(d)
+        if est is None:
+            return None
+        keep, mu, cov = est
+        w = None if ALWAYS_MIN_VAR else _max_sharpe(mu, cov)
         method[d] = 'max_sharpe' if w is not None else 'min_variance'
         if w is None:
             w = _min_variance(cov)
-        if w is None:
-            method.pop(d)
-            continue
- 
-        rows[d] = pd.Series(w, index=keep)
-        diag[d] = {'p_crisis': p_now, 'crisis': crisis,
-                   'vol_ann': float(np.sqrt(np.diag(cov).mean() * 252 / h)),
-                   'rf_ann': rf_d * 252, 'trigger': d in triggers}
- 
-    targets = pd.DataFrame(rows).T
-    diag_df = pd.DataFrame(diag).T.rename_axis('date')
-    triggers = triggers[triggers.isin(targets.index)]
-    return targets, pd.Series(method, name='method').sort_index(), diag_df, triggers
- 
- 
+        return None if w is None else pd.Series(w, index=keep)
+
+    def crisis(d):
+        '''CRISIS_TARGET = 'min_var': minimum variance under the same box.'''
+        est = _estimate(d)
+        if est is None:
+            return None
+        keep, _, cov = est
+        w = _min_variance(cov)
+        return None if w is None else pd.Series(w, index=keep)
+
+    # regime run: the whole portfolio switches to CRISIS_TARGET when the
+    # holding period is classed crisis; baseline / control: calm() every date
+    targets, diag = regime_def.crisis_overlay(reb_dates, calm, crisis)
+    names = {'cash': 'cash', 'min_var': 'min_variance'}
+    method = pd.Series({d: method[d] if k == 'model' else names[k]
+                        for d, k in diag['holding'].items() if k != 'none'},
+                       name='method', dtype=object).sort_index()
+    diag = diag.join(pd.DataFrame(extra).T)
+    return targets, method, diag
+
+
 # ----
 # Main Part
 # ----
@@ -219,9 +235,8 @@ def mvo_targets(prices: pd.DataFrame, frequency: str):
 def main() -> None:
     prices = load_prices()
     for frequency in FREQUENCIES:
-        targets, method, diag, triggers = mvo_targets(prices, frequency)
-        res = build_portfolio(targets, frequency=frequency, prices=prices,
-                              extra_rebalances=triggers)
+        targets, method, diag = mvo_targets(prices, frequency)
+        res = build_portfolio(targets, frequency=frequency, prices=prices)
         name = f'mvo/{MODEL_NAME}_{frequency.lower()}'
 
         export.build_report(
@@ -237,13 +252,11 @@ def main() -> None:
             },
         )
 
-        n_mv = int((method == 'min_variance').sum())
-        n_cr = int(diag['crisis'].sum()) if len(diag) else 0
+        held = diag['holding'].value_counts() if len(diag) else pd.Series(dtype=int)
         print(f'{name:40s} {len(res.log_returns):5d} days  '
               f'cum {np.expm1(res.log_returns.sum()):8.1%}  '
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
-              f'min-var {n_mv}/{len(method)} (crisis {n_cr})'
-              + (f'  triggered {len(triggers)}" if INTRA_TRIGGER else "'))
+              f'held: ' + ', '.join(f'{k} {v}' for k, v in held.items()))
  
  
 if __name__ == '__main__':

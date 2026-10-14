@@ -1,12 +1,14 @@
-"""
+'''
 Compare the baseline run of one model with its three regime runs.
 
 Reads the folders export.build_report wrote to _output/<MODEL>/ and prints,
 per rebalance frequency:
   1. full period (1998-2025): annual return, volatility, Sharpe, Sortino,
-     maximum drawdown, Calmar, Ulcer index, annual turnover, share of
-     trading days held in the crisis portfolio, and the Sharpe difference to the baseline
-     with its p-value;
+     maximum drawdown, longest time under water (trading days), historical
+     VaR and CVaR at 95% (daily), Calmar, Ulcer index, downside capture
+     against BENCH_RUN, annual turnover, share of trading days held in the
+     crisis portfolio, and the Sharpe difference to the baseline with its
+     p-value;
   2. crisis windows (crises.py main_crises): cumulative return peak -> trough
      and peak -> recovery, and maximum drawdown over peak -> recovery;
   3. timing test (needs the baseline and the min_var control run): each regime
@@ -24,61 +26,75 @@ their common dates, delta method on the first and second moments with a
 Newey-West (Bartlett) long-run covariance; two-sided H0: equal Sharpe ratios.
 Sharpe here is the same one as in metrics.py: mean over standard deviation of
 daily log returns in excess of the risk-free rate (risk_free.rf_daily, the
-3-month T-bill unless RISK_FREE = "zero"), annualised with sqrt(252).
+3-month T-bill unless RISK_FREE = 'zero'), annualised with sqrt(252).
 
 Usage: set MODEL and PREFIX below and run the file.
-"""
+'''
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parents[1] / '_metrics'))
 
 import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
+sys.path.append(str(Path(__file__).resolve().parents[1] / '_metrics'))
 from config import OUTPUT_ROOT
 from risk_free_rate import rf_daily
 from crises import main_crises
+from metrics import (conditional_value_at_risk, downside_capture,
+                     max_drawdown_duration, value_at_risk)
 
 # ----
 # Variables
 # ----
 
-MODEL  = "mvo"                  # output subfolder: "mvo" | "hrp" | "xgb" | "rf" | "lstm"
-PREFIX = "mvo_t_10_lw"
-CRISIS_PORTFOLIO = "min_var"    # "min_var" | "ivp"
+MODEL  = 'mvo'                  # output subfolder: 'mvo' | 'hrp' | 'xgb' | 'rf' | 'lstm'
+PREFIX = 'mvo_t_10_lw'          # the run's MODEL_NAME without regime tag and frequency
+                                # (e.g. 'hrp_t_10_lw_ward', or your MODEL_NAME in xgb.py)
 
-_c = "_ivp" if CRISIS_PORTFOLIO == "ivp" else ""
-RUNS = {
-    "baseline":         "",
-    "changepoint":      f"_changepoint_vix{_c}",
-    "hmm":              f"_hmm_gspc{_c}",
-    "wasserstein":      f"_wasserstein_gspc_vix{_c}",
-    "changepoint_trig": f"_changepoint_vix{_c}_trig",
-    "hmm_trig":         f"_hmm_gspc{_c}_trig",
-    "wasserstein_trig": f"_wasserstein_gspc_vix{_c}_trig",
-    "min_var":          None,
+RUNS = {                        # label -> regime_def.run_tag() of that run
+    'baseline':       '',
+    'changepoint':    '_changepoint_vix',
+    'hmm':            '_hmm_gspc',
+    'wasserstein':    '_wasserstein_gspc_vix',
+    # regime-triggered extension (mvo.py / hrp.py INTRA_TRIGGER = True);
+    # missing folders are skipped, so these only show once they are run
+    'changepoint_trig': '_changepoint_vix_trig',
+    'hmm_trig':         '_hmm_gspc_trig',
+    'wasserstein_trig': '_wasserstein_gspc_vix_trig',
+    'min_var':        None,               # control run, read from MIN_VAR_RUN below
 }
 # Always-min-variance control (mvo.py, ALWAYS_MIN_VAR = True).  MVO and HRP use
 # the same covariance and weight box, so the MVO control serves both; for the
-# ML models it is a plain reference row.  None = leave it out (and with it the
-# timing test); the IVP runs are compared with the baseline only.
-MIN_VAR_RUN = "mvo/mvo_t_10_lw_minvar" if CRISIS_PORTFOLIO == "min_var" else None
-BASELINE    = "baseline"                  # set to "min_var" to test the regime runs against it
-FREQUENCIES = ["monthly", "quarterly", "yearly"]     # missing folders are skipped
+# ML models it is a plain reference row.  None = leave it out.
+MIN_VAR_RUN = 'mvo/mvo_t_10_lw_minvar'
+# Robustness runs saved under another MODEL_NAME (e.g. a different window or
+# confirmation period): label -> '<model folder>/<MODEL_NAME without frequency>'.
+# They are compared with the baseline and min_var of PREFIX like any other row.
+EXTRA_RUNS = {
+    # 'wasserstein_63':      'mvo/mvo_63h_3d_t_10_lw_wasserstein_gspc_vix',
+    # 'wasserstein_63_trig': 'mvo/mvo_63h_3d_t_10_lw_wasserstein_gspc_vix_trig',
+}
+# Benchmark for the downside capture ratio: the market-cap run,
+# '<model folder>/<MODEL_NAME without frequency>' (e.g. 'mcap/<your mcap MODEL_NAME>').
+# None = column left empty.
+BENCH_RUN   = None
+TAIL_LEVEL  = 0.95                        # VaR / CVaR confidence level (daily returns)
+BASELINE    = 'baseline'                  # set to 'min_var' to test the regime runs against it
+FREQUENCIES = ['monthly', 'quarterly', 'yearly']     # missing folders are skipped
 
-CRISIS_NAMES = {
-    "crisis_1": "Dotcom",
-    "crisis_2": "GFC",
-    "crisis_3": "2018 Q4",
-    "crisis_4": "Covid",
-    "crisis_5": "2022 rates",
-    "crisis_6": "2025 tariffs",
+CRISIS_NAMES = {                # crises.py labels -> short names for the table
+    'crisis_1': 'Dotcom',
+    'crisis_2': 'GFC',
+    'crisis_3': '2018 Q4',
+    'crisis_4': 'Covid',
+    'crisis_5': '2022 rates',
+    'crisis_6': '2025 tariffs',
 }
 
 PERIODS_PER_YEAR = 252
-SAVE_DIR = Path(OUTPUT_ROOT) / "_comparison" / MODEL
+SAVE_DIR = Path(OUTPUT_ROOT) / '_comparison' / MODEL
 
 
 # ----
@@ -95,36 +111,36 @@ def _read_series(path: Path, col: str | None = None) -> pd.Series | None:
 def load_run(folder: Path) -> dict | None:
     if not folder.exists():
         return None
-    raw, met = folder / "raw", folder / "metrics"
+    raw, met = folder / 'raw', folder / 'metrics'
     run = {
-        "returns":  _read_series(raw / "daily_returns.csv", "log_return"),
-        "metrics":  pd.read_csv(met / "metrics.csv", index_col="period"),
-        "turnover": _read_series(raw / "turnover.csv"),
-        "crisis":   None,
+        'returns':  _read_series(raw / 'daily_returns.csv', 'log_return'),
+        'metrics':  pd.read_csv(met / 'metrics.csv', index_col='period'),
+        'turnover': _read_series(raw / 'turnover.csv'),
+        'crisis':   None,
     }
-    regime = raw / "regime.csv"
+    regime = raw / 'regime.csv'
     if regime.exists():
         r = pd.read_csv(regime, index_col=0, parse_dates=True)
-        if "crisis" in r.columns:
-            run["crisis"] = r["crisis"].astype(str).str.lower().eq("true")
+        if 'crisis' in r.columns:
+            run['crisis'] = r['crisis'].astype(str).str.lower().eq('true')
     return run
 
 
 def _crisis_share(run: dict) -> float:
-    """Share of trading days held in the crisis portfolio: each decision is
+    '''Share of trading days held in the crisis portfolio: each decision is
     carried forward to the next one, so triggered (off-calendar) rebalances
-    are weighted by how long they were held."""
-    c, r = run["crisis"], run["returns"]
+    are weighted by how long they were held.'''
+    c, r = run['crisis'], run['returns']
     if c is None or r is None:
         return np.nan
     c = c[~c.index.duplicated()].sort_index().astype(float)
-    return float(c.reindex(r.index, method="ffill").dropna().mean())
+    return float(c.reindex(r.index, method='ffill').dropna().mean())
 
 
 def _turnover_pa(run: dict) -> float:
-    """Annual turnover: sum over rebalances (initial deployment excluded) per
-    year, so runs with different numbers of rebalances compare directly."""
-    to, r = run["turnover"], run["returns"]
+    '''Annual turnover: sum over rebalances (initial deployment excluded) per
+    year, so runs with different numbers of rebalances compare directly.'''
+    to, r = run['turnover'], run['returns']
     if to is None or len(to) < 2 or r is None or len(r) < 2:
         return np.nan
     years = (r.index[-1] - r.index[0]).days / 365.25
@@ -136,7 +152,7 @@ def _turnover_pa(run: dict) -> float:
 # ----
 
 def _newey_west(Y: np.ndarray, lags: int) -> np.ndarray:
-    """Long-run covariance of the rows of Y (demeaned), Bartlett kernel."""
+    '''Long-run covariance of the rows of Y (demeaned), Bartlett kernel.'''
     T = len(Y)
     S = Y.T @ Y / T
     for j in range(1, lags + 1):
@@ -146,11 +162,11 @@ def _newey_west(Y: np.ndarray, lags: int) -> np.ndarray:
 
 
 def sharpe_test(r1: pd.Series, r2: pd.Series) -> tuple[float, float]:
-    """
+    '''
     Annualised Sharpe(r1) - Sharpe(r2) and the two-sided p-value of
     Ledoit & Wolf (2008), on the dates both series share.
-    """
-    df = pd.concat([r1, r2], axis=1, join="inner").dropna()
+    '''
+    df = pd.concat([r1, r2], axis=1, join='inner').dropna()
     x = df.to_numpy() - rf_daily(df.index).to_numpy()[:, None]      # excess returns
     T = len(x)
     mu = x.mean(axis=0)
@@ -175,26 +191,37 @@ def sharpe_test(r1: pd.Series, r2: pd.Series) -> tuple[float, float]:
 # Tables
 # ----
 
-def overall_table(runs: dict) -> pd.DataFrame:
+def _level(r: pd.Series) -> pd.Series:
+    '''Wealth index from daily log returns, starting at 1 the day before.'''
+    r = r.dropna()
+    return pd.Series(np.exp(np.concatenate([[0.0], r.cumsum().to_numpy()])))
+
+
+def overall_table(runs: dict, bench: pd.Series | None = None) -> pd.DataFrame:
     base = runs.get(BASELINE)
     rows = {}
     for label, run in runs.items():
-        m = run["metrics"].loc["overall"]
+        m = run['metrics'].loc['overall']
+        r = run['returns']
         row = {
-            "ann_return": m["annual_return"],
-            "ann_vol":    m["annual_volatility"],
-            "sharpe":     m["sharpe_ratio"],
-            "sortino":    m["sortino_ratio"],
-            "max_dd":     m["maximum_drawdown"],
-            "calmar":     m["calmar_ratio"],
-            "ulcer":      m["ulcer_index"],
-            "turnover_pa":  _turnover_pa(run),
-            "crisis_share": _crisis_share(run),
-            "d_sharpe":   np.nan,
-            "p_value":    np.nan,
+            'ann_return': m['annual_return'],
+            'ann_vol':    m['annual_volatility'],
+            'sharpe':     m['sharpe_ratio'],
+            'sortino':    m['sortino_ratio'],
+            'max_dd':     m['maximum_drawdown'],
+            'dd_days':    max_drawdown_duration(_level(r)),
+            'var_95':     value_at_risk(r, TAIL_LEVEL),
+            'cvar_95':    conditional_value_at_risk(r, TAIL_LEVEL),
+            'calmar':     m['calmar_ratio'],
+            'ulcer':      m['ulcer_index'],
+            'down_capture': downside_capture(r, bench) if bench is not None else np.nan,
+            'turnover_pa':  _turnover_pa(run),
+            'crisis_share': _crisis_share(run),
+            'd_sharpe':   np.nan,
+            'p_value':    np.nan,
         }
         if base is not None and label != BASELINE:
-            row["d_sharpe"], row["p_value"] = sharpe_test(run["returns"], base["returns"])
+            row['d_sharpe'], row['p_value'] = sharpe_test(run['returns'], base['returns'])
         rows[label] = row
     return pd.DataFrame(rows).T
 
@@ -202,16 +229,16 @@ def overall_table(runs: dict) -> pd.DataFrame:
 def crisis_table(runs: dict) -> pd.DataFrame:
     rows = {}
     for c in main_crises:
-        name = CRISIS_NAMES.get(c["label"], c["label"])
-        for what, period, col in (("peak->trough", "ptt", "cumulative_return"),
-                                  ("peak->recovery", "full", "cumulative_return"),
-                                  ("max DD", "full", "maximum_drawdown")):
-            key = f"{c['label']}_{period}"
-            rows[(name, what)] = {label: run["metrics"].loc[key, col]
-                                  if key in run["metrics"].index else np.nan
+        name = CRISIS_NAMES.get(c['label'], c['label'])
+        for what, period, col in (('peak->trough', 'ptt', 'cumulative_return'),
+                                  ('peak->recovery', 'full', 'cumulative_return'),
+                                  ('max DD', 'full', 'maximum_drawdown')):
+            key = c['label'] + '_' + period
+            rows[(name, what)] = {label: run['metrics'].loc[key, col]
+                                  if key in run['metrics'].index else np.nan
                                   for label, run in runs.items()}
     out = pd.DataFrame(rows).T
-    out.index.names = ["crisis", "measure"]
+    out.index.names = ['crisis', 'measure']
     return out
 
 
@@ -227,38 +254,42 @@ def _max_dd(r: pd.Series) -> float:
 
 
 def timing_table(runs: dict) -> pd.DataFrame | None:
-    if "baseline" not in runs or "min_var" not in runs:
+    if 'baseline' not in runs or 'min_var' not in runs:
         return None
-    both = pd.concat([runs["baseline"]["returns"], runs["min_var"]["returns"]],
-                     axis=1, join="inner").dropna()
+    both = pd.concat([runs['baseline']['returns'], runs['min_var']['returns']],
+                     axis=1, join='inner').dropna()
     R_base, R_mv = np.expm1(both.iloc[:, 0]), np.expm1(both.iloc[:, 1])
     rows = {}
     for label, run in runs.items():
-        if label in ("baseline", "min_var") or run["crisis"] is None:
+        if label in ('baseline', 'min_var') or run['crisis'] is None:
             continue
         s = _crisis_share(run)
         mix = np.log1p((1.0 - s) * R_base + s * R_mv)
-        r = run["returns"].reindex(mix.index)
+        r = run['returns'].reindex(mix.index)
         d, p = sharpe_test(r, mix)
-        rows[label] = {"min_var_share": s,
-                       "sharpe_run": _sharpe(r), "sharpe_mix": _sharpe(mix),
-                       "d_sharpe": d, "p_value": p,
-                       "max_dd_run": _max_dd(r), "max_dd_mix": _max_dd(mix)}
+        rows[label] = {'min_var_share': s,
+                       'sharpe_run': _sharpe(r), 'sharpe_mix': _sharpe(mix),
+                       'd_sharpe': d, 'p_value': p,
+                       'max_dd_run': _max_dd(r), 'max_dd_mix': _max_dd(mix),
+                       'cvar_run': conditional_value_at_risk(r, TAIL_LEVEL),
+                       'cvar_mix': conditional_value_at_risk(mix, TAIL_LEVEL)}
     return pd.DataFrame(rows).T if rows else None
 
 
 def _fmt_overall(df: pd.DataFrame) -> pd.DataFrame:
-    pct = ["ann_return", "ann_vol", "max_dd", "crisis_share"]
-    num = ["sharpe", "sortino", "calmar", "ulcer", "turnover_pa", "d_sharpe"]
+    pct = ['ann_return', 'ann_vol', 'max_dd', 'var_95', 'cvar_95', 'crisis_share']
+    num = ['sharpe', 'sortino', 'calmar', 'ulcer', 'down_capture', 'turnover_pa', 'd_sharpe']
     out = pd.DataFrame(index=df.index)
     for c in df.columns:
         v = df[c].astype(float)
         if c in pct:
-            out[c] = v.map(lambda x: "" if pd.isna(x) else f"{x:.2%}")
+            out[c] = v.map(lambda x: '' if pd.isna(x) else f'{x:.2%}')
         elif c in num:
-            out[c] = v.map(lambda x: "" if pd.isna(x) else f"{x:+.3f}" if c == "d_sharpe" else f"{x:.3f}")
+            out[c] = v.map(lambda x: '' if pd.isna(x) else f'{x:+.3f}' if c == 'd_sharpe' else f'{x:.3f}')
+        elif c == 'dd_days':
+            out[c] = v.map(lambda x: '' if pd.isna(x) else f'{x:.0f}')
         else:
-            out[c] = v.map(lambda x: "" if pd.isna(x) else f"{x:.3f}")
+            out[c] = v.map(lambda x: '' if pd.isna(x) else f'{x:.3f}')
     return out
 
 
@@ -268,18 +299,20 @@ def _fmt_overall(df: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    pd.set_option("display.width", 200)
-    pd.set_option("display.max_columns", 20)
+    pd.set_option('display.width', 200)
+    pd.set_option('display.max_columns', 30)
 
     for freq in FREQUENCIES:
         runs, missing = {}, []
-        for label, tag in RUNS.items():
-            if label == "min_var":
+        for label, tag in {**RUNS, **{k: ('extra', v) for k, v in EXTRA_RUNS.items()}}.items():
+            if isinstance(tag, tuple):                       # EXTRA_RUNS entry
+                folder = Path(OUTPUT_ROOT) / f'{tag[1]}_{freq}'
+            elif label == 'min_var':
                 if not MIN_VAR_RUN:
                     continue
-                folder = Path(OUTPUT_ROOT) / f"{MIN_VAR_RUN}_{freq}"
+                folder = Path(OUTPUT_ROOT) / f'{MIN_VAR_RUN}_{freq}'
             else:
-                folder = Path(OUTPUT_ROOT) / MODEL / f"{PREFIX}{tag}_{freq}"
+                folder = Path(OUTPUT_ROOT) / MODEL / f'{PREFIX}{tag}_{freq}'
             run = load_run(folder)
             if run is None:
                 missing.append(folder.name)
@@ -288,34 +321,41 @@ def main() -> None:
         if not runs:
             continue
 
-        print(f"\n=== {MODEL} / {PREFIX}{_c} / {freq} ===")
+        print(f'\n=== {MODEL} / {PREFIX} / {freq} ===')
         if missing:
-            print("  missing: " + ", ".join(missing))
+            print('  missing: ' + ', '.join(missing))
 
-        ov = overall_table(runs)
+        bench = None
+        if BENCH_RUN:
+            b = load_run(Path(OUTPUT_ROOT) / f'{BENCH_RUN}_{freq}')
+            if b is None:
+                print(f'  benchmark {BENCH_RUN}_{freq} not found: downside capture left empty')
+            else:
+                bench = b['returns']
+        ov = overall_table(runs, bench)
         cr = crisis_table(runs)
-        print("\nFull period (d_sharpe, p_value: Ledoit-Wolf 2008 test against the baseline)")
+        print('\nFull period (d_sharpe, p_value: Ledoit-Wolf 2008 test against the baseline)')
         print(_fmt_overall(ov).to_string())
-        print("\nCrisis windows (crises.py)")
-        print(cr.map(lambda x: "" if pd.isna(x) else f"{x:.2%}").to_string())
+        print('\nCrisis windows (crises.py)')
+        print(cr.map(lambda x: '' if pd.isna(x) else f'{x:.2%}').to_string())
 
         tt = timing_table(runs)
         if tt is not None:
-            print("\nTiming test: regime run vs static mix with the same min-variance share")
+            print('\nTiming test: regime run vs static mix with the same min-variance share')
             out = tt.copy().astype(object)
-            for c in ("min_var_share", "max_dd_run", "max_dd_mix"):
-                out[c] = tt[c].map(lambda x: f"{x:.2%}")
-            for c in ("sharpe_run", "sharpe_mix", "p_value"):
-                out[c] = tt[c].map(lambda x: f"{x:.3f}")
-            out["d_sharpe"] = tt["d_sharpe"].map(lambda x: f"{x:+.3f}")
+            for c in ('min_var_share', 'max_dd_run', 'max_dd_mix', 'cvar_run', 'cvar_mix'):
+                out[c] = tt[c].map(lambda x: f'{x:.2%}')
+            for c in ('sharpe_run', 'sharpe_mix', 'p_value'):
+                out[c] = tt[c].map(lambda x: f'{x:.3f}')
+            out['d_sharpe'] = tt['d_sharpe'].map(lambda x: f'{x:+.3f}')
             print(out.to_string())
-            tt.to_csv(SAVE_DIR / f"{PREFIX}_{freq}_timing.csv")
+            tt.to_csv(SAVE_DIR / f'{PREFIX}_{freq}_timing.csv')
 
-        ov.to_csv(SAVE_DIR / f"{PREFIX}{_c}_{freq}_overall.csv")
-        cr.to_csv(SAVE_DIR / f"{PREFIX}{_c}_{freq}_crises.csv")
+        ov.to_csv(SAVE_DIR / f'{PREFIX}_{freq}_overall.csv')
+        cr.to_csv(SAVE_DIR / f'{PREFIX}_{freq}_crises.csv')
 
-    print(f"\nsaved to {SAVE_DIR}")
+    print(f'\nsaved to {SAVE_DIR}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
