@@ -79,11 +79,11 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-WINDOW_MODE  = 'holdout'             # 'holdout' | 'latest'
-TARGET       = 'rank'               # 'rank' | 'return'
+WINDOW_MODE  = 'holdout'                            # 'holdout' | 'latest'
+TARGET       = 'rank'                               # 'rank' | 'return'
 SEQ_LEN     = int(LSTM_FIXED['seq_len'])
-SEEDS       = list(BASE_SEED_LSTM)   # LSTM seed variance is large
-N_WORKERS   = max(1, (os.cpu_count() or 2) // 2)   # parallel rebalance dates
+SEEDS       = list(BASE_SEED_LSTM)                  # LSTM seed variance is large
+N_WORKERS   = max(1, (os.cpu_count() or 2) // 2)    # parallel rebalance dates
 TF_THREADS  = 2                                     # per worker; keep fixed (determinism)
  
 FREQUENCIES = [

@@ -13,7 +13,7 @@ Conversion
     from day t itself is used.
 
 RISK_FREE (config.py):
-    'tbill_3m'   the T-bill rate above (publication setting)
+    't_bill_3_month'   the T-bill rate above (publication setting)
     'zero'       rf = 0 everywhere (thesis setting; robustness)
 '''
 

@@ -28,7 +28,7 @@ Sharpe here is the same one as in metrics.py: mean over standard deviation of
 daily log returns in excess of the risk-free rate (risk_free.rf_daily, the
 3-month T-bill unless RISK_FREE = 'zero'), annualised with sqrt(252).
 
-Usage: set MODEL and PREFIX below and run the file.
+Usage: set MODEL, PREFIX and CRISIS_TARGET below and run the file.
 '''
 
 import sys
@@ -53,16 +53,13 @@ MODEL  = 'mvo'                  # output subfolder: 'mvo' | 'hrp' | 'xgb' | 'rf'
 PREFIX = 'mvo_t_10_lw'          # the run's MODEL_NAME without regime tag and frequency
                                 # (e.g. 'hrp_t_10_lw_ward', or your MODEL_NAME in xgb.py)
 
+CRISIS_TARGET = 'cash'          # regime runs to compare: 'cash' | 'min_var' (mvo, hrp) | 'hrp' (xgb, rf, lstm)
+
 RUNS = {                        # label -> regime_def.run_tag() of that run
     'baseline':       '',
-    'changepoint':    '_changepoint_vix',
-    'hmm':            '_hmm_gspc',
-    'wasserstein':    '_wasserstein_gspc_vix',
-    # regime-triggered extension (mvo.py / hrp.py INTRA_TRIGGER = True);
-    # missing folders are skipped, so these only show once they are run
-    'changepoint_trig': '_changepoint_vix_trig',
-    'hmm_trig':         '_hmm_gspc_trig',
-    'wasserstein_trig': '_wasserstein_gspc_vix_trig',
+    'changepoint':    f'_changepoint_vix_{CRISIS_TARGET}',
+    'hmm':            f'_hmm_gspc_{CRISIS_TARGET}',
+    'wasserstein':    f'_wasserstein_gspc_vix_{CRISIS_TARGET}',
     'min_var':        None,               # control run, read from MIN_VAR_RUN below
 }
 # Always-min-variance control (mvo.py, ALWAYS_MIN_VAR = True).  MVO and HRP use

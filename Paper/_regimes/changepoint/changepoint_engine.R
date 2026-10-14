@@ -10,7 +10,7 @@ library(tidyr)
 # ---------------------------------------------------------------------------
 # 1. Load and clean
 # ---------------------------------------------------------------------------
-returns <- read_parquet("C:/Users/benel/Coding/Python/Thesis/_database/regimes_data_log.parquet")
+returns <- read_parquet("C:/Users/benel/Coding/Python/Paper/_database/regimes_data_log.parquet")
 
 returns <- returns %>%
   mutate(date = as.Date(format(Date, "%Y-%m-%d"))) %>%
@@ -53,8 +53,8 @@ cat("VIX  breaks:", nrow(vix_cps),
 cat("GSPC breaks:", nrow(gspc_cps),
     "| through 2015-09-30:", sum(gspc_cps$detection_date <= as.Date("2015-09-30")), "\n")
 
-write_csv(vix_cps,  "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/regimes_r/vix_changepoint.csv")
-write_csv(gspc_cps, "C:/Users/benel/Coding/Python/Thesis/_regimes/changepoint/regimes_r/gspc_changepoint.csv")
+write_csv(vix_cps,  "C:/Users/benel/Coding/Python/Paper/_regimes/changepoint/regimes_r/vix_changepoint.csv")
+write_csv(gspc_cps, "C:/Users/benel/Coding/Python/Paper/_regimes/changepoint/regimes_r/gspc_changepoint.csv")
 
 # ---------------------------------------------------------------------------
 # 3. Figures

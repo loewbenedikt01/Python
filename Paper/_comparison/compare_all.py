@@ -65,14 +65,14 @@ from compare_runs import CRISIS_NAMES, sharpe_test
 # _output/<BENCH_MODEL>/ with the same frequency.  BENCH_RUN = the MODEL_NAME
 # without frequency; None = the only run in that folder (the first one, with a
 # note, if there are several).
-BENCH_MODEL = 'mcap'
+BENCH_MODEL = 'market_cap'
 BENCH_RUN   = None
 
 SUB_CRISES  = False                  # also one sheet per sub-crisis
 TAIL_LEVEL  = 0.95                   # VaR / CVaR level (daily returns)
 
 # Row order of the model folders; folders not listed come after, alphabetically.
-MODEL_ORDER = ['mcap', 'equal', 'ew', 'mvo', 'hrp', 'xgb', 'rf', 'lstm']
+MODEL_ORDER = ['sp500', 'market_cap', 'equal_weight', 'mvo', 'hrp', 'xgb', 'rf', 'lstm']
 FREQ_ORDER  = ['monthly', 'quarterly', 'yearly']
 
 SKIP_FOLDERS = {'_comparison', '_baseline_targets'}
@@ -91,11 +91,10 @@ PCT_COLS = ['cum_return', 'ptt_return', 'ann_return', 'ann_vol', 'max_dd',
 # ----
 
 def _parse(model: str, folder: str) -> dict | None:
-    '''model, run name, frequency and regime settings from a run folder name.'''
+    '''model, run name, frequency and regime settings from a run folder name.
+    A folder without frequency (sp500, buy & hold) gets frequency None.'''
     m = re.match(r'^(.*)_(' + '|'.join(FREQ_ORDER) + r')$', folder)
-    if m is None:
-        return None
-    name, freq = m.groups()
+    name, freq = m.groups() if m else (folder, None)
     info = {'model': model, 'run': name, 'frequency': freq,
             'detector': 'none', 'series': '', 'crisis_target': ''}
     pat = (r'_(' + '|'.join(DETECTORS) + r')_(' + '|'.join(SERIES) + r')'
@@ -125,7 +124,7 @@ def find_runs() -> list[dict]:
         for rdir in sorted(mdir.iterdir()):
             ret_path = rdir / 'raw' / 'daily_returns.csv'
             info = _parse(mdir.name, rdir.name) if rdir.is_dir() else None
-            if info is None or not ret_path.exists():
+            if not ret_path.exists():
                 continue
             info['returns'] = _read(ret_path, 'log_return').dropna()
             info['turnover'] = _read(rdir / 'raw' / 'turnover.csv')
@@ -137,7 +136,10 @@ def find_runs() -> list[dict]:
                     crisis = r['crisis'].astype(str).str.lower().eq('true').astype(float)
                     crisis = crisis[~crisis.index.duplicated()].sort_index()
             info['crisis'] = crisis
-            runs.append(info)
+            if info['frequency'] is not None:
+                runs.append(info)
+            else:                            # no rebalancing: one reference row per frequency
+                runs += [{**info, 'frequency': f} for f in FREQ_ORDER]
     return runs
 
 
@@ -292,8 +294,8 @@ def main() -> None:
     sheets, windows = build_tables(runs)
     SAVE_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        import openpyxl                                    # noqa: F401
-        path = SAVE_DIR / 'compare_all.csv'
+        import openpyxl
+        path = SAVE_DIR / 'compare_all.xlsx'
         _write_xlsx(sheets, windows, path)
     except ImportError:
         path = SAVE_DIR / 'compare_all'

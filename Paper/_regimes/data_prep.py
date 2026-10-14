@@ -3,10 +3,10 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-# Define paths
-BASE_DIR = Path(__file__).resolve().parents[2] / '_database'
-DATABASE_PATH = BASE_DIR / 'regimes_raw' / 'database.parquet'
-OUTPUT_PATH = BASE_DIR / 'regimes_raw' / 'regimes_data_log.parquet'
+# Define paths (Paper/_database; the output is read by main_hmm.py and main_wasserstein.py)
+BASE_DIR = Path(__file__).resolve().parents[1] / '_database'
+DATABASE_PATH = BASE_DIR / 'database.parquet'
+OUTPUT_PATH = BASE_DIR / 'regimes_data_log.parquet'
 
 
 def process_and_save_log_returns(
@@ -42,6 +42,7 @@ def process_and_save_log_returns(
 
     return log_returns
 
-df_log_returns = process_and_save_log_returns(
-    tickers=['^VIX', '^GSPC'], output_path=OUTPUT_PATH
-)
+if __name__ == '__main__':
+    df_log_returns = process_and_save_log_returns(
+        tickers=['^VIX', '^GSPC'], output_path=OUTPUT_PATH
+    )

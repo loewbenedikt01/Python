@@ -53,6 +53,7 @@ from config import (
     END_DATE,
     MIN_WEIGHT,
     MAX_WEIGHT,
+    TRANSACTION_COST_BPS,
     HORIZON_TRADING_DAYS,
     TRAINING_MONTHS_XGB,
     EMBARGO_MONTHS_XGB,
@@ -68,8 +69,8 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-MODEL_NAME   = 'xgb_no_t_h_test_cp_w'        # change per run
 WINDOW_MODE  = 'holdout'         # 'holdout' | 'latest'
+MODEL_NAME   = f'xgb_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}'
 
 FREQUENCIES = [
     'Monthly',

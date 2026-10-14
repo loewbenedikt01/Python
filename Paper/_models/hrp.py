@@ -68,7 +68,7 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # Variables
 # ----
 
-COV_METHOD = 'lw'      # 'sample' | 'ledoit_wolf'   (match MVO)
+COV_METHOD = 'lw'               # 'sample' | 'lw' = 'ledoit_wolf'   (match MVO)
 LINKAGE    = 'ward'             # 'single' | 'ward' | 'average'
 
 # ----

@@ -95,7 +95,7 @@ if ALWAYS_MIN_VAR and regime_def.DETECTOR != 'none':
     raise ValueError('[mvo] ALWAYS_MIN_VAR is a control run: set regime_def.DETECTOR to none')
 _run = '_minvar' if ALWAYS_MIN_VAR else regime_def.check_run('mvo')
 
-MODEL_NAME = f'mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}'   # costs live in config.py
+MODEL_NAME = f'mvo_t_{TRANSACTION_COST_BPS}_{COV_METHOD}{_run}'
 
 
 # ----

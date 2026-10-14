@@ -16,7 +16,7 @@ from crises import main_crises, sub_crises
 CALM = [('2004-01-01', '2006-12-31'), ('2013-01-01', '2014-12-31'), ('2017-01-01', '2017-12-31')]
 
 for tag in ('gspc_vix', 'gspc'):
-    df = pd.read_csv(HERE / 'regimes_final' / f'wasserstein_{tag}_21_20.csv', index_col='date', parse_dates=['date'])
+    df = pd.read_csv(HERE / 'regimes_final' / f'wasserstein_{tag}.csv', index_col='date', parse_dates=['date'])
     crisis = df['p_crisis'] > 0.5
     print(f'\n=== {tag}: crisis on {crisis.mean():.1%} of days, '
           f'{(crisis != crisis.shift()).sum() / (len(df) / 252):.1f} label flips per year, '
