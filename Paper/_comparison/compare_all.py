@@ -60,7 +60,7 @@ from metrics import (
     value_at_risk,
 )
 from compare_runs import CRISIS_NAMES, sharpe_test
-from risk_free import rf_period
+from risk_free_rate import rf_period
 
 # ----
 # Variables
