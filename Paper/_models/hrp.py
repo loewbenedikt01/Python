@@ -80,7 +80,7 @@ regime_def.SERIES        = 'vix'     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix
 regime_def.CRISIS_TARGET = 'min_var'   # 'cash' (main) | 'min_var' (robustness): held when in crisis
 
 MODEL_NAME = (f'hrp_t_{TRANSACTION_COST_BPS}_{COV_METHOD}_{LINKAGE}'
-              + regime_def.check_run('hrp'))           # costs live in config.py
+              + regime_def.check_run('hrp'))
 
 FREQUENCIES = [
     'Monthly',

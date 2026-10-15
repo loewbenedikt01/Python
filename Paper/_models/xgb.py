@@ -74,17 +74,17 @@ MODEL_NAME   = f'xgb_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}'
 
 FREQUENCIES = [
     'Monthly',
-    #'Quarterly',
-    #'Yearly',
+    'Quarterly',
+    'Yearly',
 ]
 
 # ----
 # Regime implementation
 # ----
 
-regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
-regime_def.CRISIS_TARGET = 'cash'   # 'cash' | 'hrp' (hybrid): held when in crisis
+regime_def.DETECTOR      = 'changepoint'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = 'vix'     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'hrp'   # 'cash' | 'hrp' (hybrid): held when in crisis
 RUN_TAG = regime_def.check_run('xgb')
 
 # ----

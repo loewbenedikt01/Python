@@ -88,8 +88,8 @@ TF_THREADS  = 2                                     # per worker; keep fixed (de
  
 FREQUENCIES = [
     'Monthly',
-    #'Quarterly',
-    #'Yearly',
+    'Quarterly',
+    'Yearly',
 ]
  
  
@@ -97,9 +97,9 @@ FREQUENCIES = [
 # Regime implementation
 # ----
  
-regime_def.DETECTOR      = 'none'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
-regime_def.SERIES        = None     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
-regime_def.CRISIS_TARGET = 'cash'   # 'cash' | 'hrp' (hybrid): held when in crisis
+regime_def.DETECTOR      = 'changepoint'   # 'none' (baseline) | 'changepoint' | 'hmm' | 'wasserstein'
+regime_def.SERIES        = 'vix'     # changepoint 'vix'|'gspc', hmm 'gspc'|'vix', wasserstein 'gspc_vix'|'gspc'
+regime_def.CRISIS_TARGET = 'hrp'   # 'cash' | 'hrp' (hybrid): held when in crisis
 RUN_TAG = regime_def.check_run('lstm')
 
 BASE_NAME  = f'lstm_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}_{TARGET}'
@@ -457,11 +457,11 @@ def lstm_targets(db: pd.DataFrame, prices: pd.DataFrame, frequency: str):
             if 'reject' in r:
                 msg = 'REJECTED ({})'.format(r['reject'])
             else:
-                n_tr, n_seq, n_va, dt, val_ic, n_filled = (
+                n_tr, n_seq, n_va, dt, val_ic, filled = (
                     r['n_tr'], r['n_seq'], r['n_va'], r['dt'], r['val_ic'], r['n_filled'])
                 msg = (f'train={n_tr}mo/{n_seq}seq val={n_va}mo  '
                        f'{_fmt(dt)}  valIC={val_ic:+.3f}'
-                       + (f' filled={n_filled}' if n_filled else ''))
+                       + (f' filled={filled}' if filled else ''))
             print(f'[lstm] {frequency} {d_r.date()}  {k:>3}/{len(todo)}  {msg}  '
                   f'elapsed {_fmt(elapsed)} / ETA {_fmt(eta)}', flush=True)
  
@@ -585,7 +585,7 @@ def main() -> None:
               f'avg turnover {res.turnover.iloc[1:].mean():.3f}  '
               f'solved {len(model_targets)}/{n_dates}  mean IC {ic:+.3f}  held: '
               + ', '.join(f'{k} {v}' for k, v in regime['holding'].value_counts().items()))
- 
+
  
 if __name__ == '__main__':
     main()
