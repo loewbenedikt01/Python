@@ -22,7 +22,8 @@ Three blocks per sheet, split by a thick line:
            calmar values are ranked too.  A period where the metric is
            undefined for every run (down_capture when the benchmark has no
            down month) stays empty.
-           Below the periods: the Borda total over all periods and its rank.
+  rank     below a thick line: 'Overall rank', the rank of every run in the
+           Overall row (1 = best; the order of the Overall z-scores)
   sens     sensitivity analysis: the crisis rows of the Borda block combined
            into one composite crisis score per weighting scheme (SEVERITY
            below) and its rank.  Score of crisis c = mean of its peak ->
@@ -35,16 +36,24 @@ Three blocks per sheet, split by a thick line:
              '<scheme> score'      peak -> trough and trough -> recovery
              'PTT <scheme> score'  peak -> trough rows only
              'TTP <scheme> score'  trough -> recovery rows only
-Sheet borda_all: the Borda total of every metric (rows) per run, the sum over
-all metrics and the final rank (1 = best); below it the composite crisis
-scores of all three variants summed over all metrics, per weighting scheme,
-and their ranks.
+Sheet borda_all: the Overall-period Borda points of every metric (rows) per
+run, their sum over all metrics ('Overall total') and its rank ('Overall
+rank', 1 = best); below it the composite crisis scores of all three variants
+summed over all metrics, per weighting scheme, and their ranks.
 Sheet weights: the severity metrics and the resulting crisis weights.
 
 Metrics are computed with compare_all.window_metrics, so they match
 compare_all.xlsx; beta and down_capture are against compare_all.BENCH_MODEL.
 
-Output: _output/_comparison/zscores.xlsx (needs openpyxl).
+Output (needs openpyxl), in _output/_comparison/ (WORKBOOKS below):
+  zscores.xlsx             all runs ranked together
+  zscores_monthly.xlsx     only the monthly runs ranked against each other,
+  zscores_quarterly.xlsx   likewise quarterly and yearly, so every run is
+  zscores_yearly.xlsx      compared within its rebalancing frequency
+  z_scores_monthly_base.xlsx    only the base runs (no regime switch: the
+  z_scores_quarterly_base.xlsx  models' baselines and the benchmarks) of
+  z_scores_yearly_base.xlsx     one frequency against each other
+Runs without a rebalancing frequency (sp500) are in every workbook.
 
 Usage: set the variables below and run the file.
 '''
@@ -79,7 +88,6 @@ METRICS = {
 }
 
 INCLUDE_MODELS = None        # e.g. ['mvo', 'hrp', 'market_cap']; None = all model folders
-INCLUDE_FREQS  = None        # e.g. ['monthly']; None = all frequencies
 
 # Sensitivity analysis: severity s_c of each main crisis, C1 ... C6 in the
 # order of crises.main_crises; weights w_c = s_c / sum_j s_j
@@ -90,9 +98,21 @@ SEVERITY = {
     'VIX':      [25.28, 32.68, 19.78, 46.42, 26.03, 23.54],     # mean VIX during the crisis
 }
 
-SAVE_PATH = ca.SAVE_DIR / 'zscores.xlsx'
+# file name -> (frequencies, group) ranked together in it.
+# frequencies: list, None = all.  group: None = all runs; 'base' = runs without
+# a regime switch (model baselines and benchmarks; not the always-min-var
+# control); 'cash' / 'hrp' / 'min_var' = the regime runs with that crisis target
+WORKBOOKS = {
+    'zscores.xlsx':                 (None, None),
+    'zscores_monthly.xlsx':         (['monthly'], None),
+    'zscores_quarterly.xlsx':       (['quarterly'], None),
+    'zscores_yearly.xlsx':          (['yearly'], None),
+    'z_scores_monthly_base.xlsx':   (['monthly'], 'base'),
+    'z_scores_quarterly_base.xlsx': (['quarterly'], 'base'),
+    'z_scores_yearly_base.xlsx':    (['yearly'], 'base'),
+}
 
-FMT = {'value': '0.0000', 'z': '0.00', 'borda': '0.0', 'sens': '0.00'}
+FMT = {'value': '0.0000', 'z': '0.00', 'borda': '0.0', 'rank': '0', 'sens': '0.00'}
 
 
 # ----
@@ -114,7 +134,7 @@ def select_runs() -> tuple[list[dict], dict]:
     (runs, benchmarks).  Runs are those of compare_all, filtered and sorted,
     each with a column name.  A folder without frequency (sp500) is listed by
     compare_all once per frequency; here it is kept once, named without
-    frequency.
+    frequency and marked no_freq.
     '''
     all_runs = ca.find_runs()
     benches = ca._benchmarks(all_runs)
@@ -123,13 +143,11 @@ def select_runs() -> tuple[list[dict], dict]:
     for r in sorted(all_runs, key=ca._sort_key):
         if INCLUDE_MODELS is not None and r['model'] not in INCLUDE_MODELS:
             continue
-        if INCLUDE_FREQS is not None and r['frequency'] not in INCLUDE_FREQS:
-            continue
         if id(r['returns']) in seen:
             continue
         seen.add(id(r['returns']))
-        no_freq = n_shared[id(r['returns'])] > 1
-        r['column'] = r['run'] if no_freq else r['run'] + '_' + r['frequency']
+        r['no_freq'] = bool(n_shared[id(r['returns'])] > 1)
+        r['column'] = r['run'] if r['no_freq'] else r['run'] + '_' + r['frequency']
         runs.append(r)
     return runs, benches
 
@@ -161,13 +179,9 @@ def zscores(values: pd.DataFrame) -> pd.DataFrame:
 def borda(values: pd.DataFrame, direction: int) -> pd.DataFrame:
     '''
     Borda points within every row: number of runs beaten, ties averaged
-    (rank - 1 with average ranks, best = n - 1).  Total and rank appended.
+    (rank - 1 with average ranks, best = n - 1).
     '''
-    pts = (direction * values).rank(axis=1, method='average') - 1.0
-    total = pts.sum(axis=0, min_count=1)
-    pts.loc['Borda total'] = total
-    pts.loc['Borda rank'] = total.rank(ascending=False, method='min')
-    return pts
+    return (direction * values).rank(axis=1, method='average') - 1.0
 
 
 def weights() -> pd.DataFrame:
@@ -238,7 +252,7 @@ def _write_block(ws, df: pd.DataFrame, block: str, row0: int, thick_top: bool) -
             c = ws.cell(row=r, column=j, value=v)
             c.number_format = '0' if label.endswith('rank') else FMT[block]
             cells.append(c)
-        if label.startswith('Borda') or label.endswith('rank'):
+        if label.endswith(('rank', 'total')):
             for c in cells:
                 c.font = Font(bold=True)
         if thick_top and i == 0:
@@ -276,7 +290,7 @@ def write(tables: dict, summary: pd.DataFrame, sens_all: pd.DataFrame | None, pa
                 _write_block(ws, sens_all, 'sens', row, True)
             continue
         row = 2
-        for k, block in enumerate(('value', 'z', 'borda', 'sens')):
+        for k, block in enumerate(('value', 'z', 'borda', 'rank', 'sens')):
             df = tables[name].get(block)
             if df is None:
                 continue
@@ -298,13 +312,17 @@ def write(tables: dict, summary: pd.DataFrame, sens_all: pd.DataFrame | None, pa
     wb.save(path)
 
 
-def main() -> None:
-    runs, benches = select_runs()
-    if not runs:
-        print('[zscores] no runs found')
-        return
-    print(f'[zscores] {len(runs)} runs, {len(periods())} periods, {len(METRICS)} metrics')
-    values = value_tables(runs, benches)
+def _in_group(run: dict, group: str | None) -> bool:
+    if group is None:
+        return True
+    if group == 'base':
+        return run['detector'] == 'none' and run['crisis_target'] == ''
+    return run['detector'] != 'none' and run['crisis_target'] == group
+
+
+def build(values: dict[str, pd.DataFrame], path) -> None:
+    '''z-scores, Borda count and sensitivity analysis of the runs in values
+    (the columns), written to path.'''
     tables, totals, sens_sum = {}, {}, None
     for m, direction in METRICS.items():
         z = zscores(values[m])
@@ -313,20 +331,39 @@ def main() -> None:
             b = borda(values[m], direction)
             sens = sensitivity(b)
             tables[m]['borda'] = b
+            tables[m]['rank'] = b.loc[['Overall']].rank(axis=1, ascending=False, method='min') \
+                .rename(index={'Overall': 'Overall rank'})
             tables[m]['sens'] = sens
-            totals[m] = b.loc['Borda total']
+            totals[m] = b.loc['Overall']
             scores = sens.loc[[i for i in sens.index if i.endswith('score')]]
             sens_sum = scores if sens_sum is None else sens_sum.add(scores)
     summary = pd.DataFrame(totals).T
     total = summary.sum(axis=0, min_count=1)
-    summary.loc['Borda total'] = total
-    summary.loc['Borda rank'] = total.rank(ascending=False, method='min')
-    ca.SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    write(tables, summary, _ranks(sens_sum) if sens_sum is not None else None, SAVE_PATH)
-    best = summary.loc['Borda rank'].sort_values().head(5)
-    print('[zscores] top 5 overall: ' + ', '.join(f'{int(v)}. {k}' for k, v in best.items()))
-    print(f'[zscores] saved to {SAVE_PATH}')
+    summary.loc['Overall total'] = total
+    summary.loc['Overall rank'] = total.rank(ascending=False, method='min')
+    write(tables, summary, _ranks(sens_sum) if sens_sum is not None else None, path)
+    best = summary.loc['Overall rank'].sort_values().head(3)
+    print(f'[zscores] {path.name}: {summary.shape[1]} runs, top 3: '
+          + ', '.join(f'{int(v)}. {k}' for k, v in best.items()))
 
+
+def main() -> None:
+    runs, benches = select_runs()
+    if not runs:
+        print('[zscores] no runs found')
+        return
+    print(f'[zscores] {len(runs)} runs, {len(periods())} periods, {len(METRICS)} metrics')
+    values = value_tables(runs, benches)          # every run is measured once
+    ca.SAVE_DIR.mkdir(parents=True, exist_ok=True)
+    for name, (freqs, group) in WORKBOOKS.items():
+        cols = [r['column'] for r in runs
+                if (freqs is None or r['no_freq'] or r['frequency'] in freqs)
+                and _in_group(r, group)]
+        if len(cols) < 2:
+            print(f'[zscores] {name}: fewer than 2 runs, skipped')
+            continue
+        build({m: v[cols] for m, v in values.items()}, ca.SAVE_DIR / name)
+    print(f'[zscores] saved to {ca.SAVE_DIR}')
 
 if __name__ == '__main__':
     main()

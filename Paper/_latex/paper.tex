@@ -20,24 +20,58 @@
 % Read Files
 % ----
 \newcommand{\changepointfile}{regime_changepoint_vix.csv}
-\newcommand{\hmmfile}{regime_hmm_gspc.csv}
-\newcommand{\wassersteinfile}{regime_wasserstein_gspc_vix.csv}
+\newcommand{\hmmfile}{regime_hmm_gspc_monthly.csv}
+\newcommand{\wassersteinfile}{regime_wasserstein_gspc_vix_monthly.csv}
+\newcommand{\lstmvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_monthly_value.csv}
 
-% p_crisis line chart, shared by all three regime figures
-\pgfplotsset{pcrisis/.style={
+% Time-series line chart 1998-2025, shared by all figures
+\pgfplotsset{timechart/.style={
     width=\textwidth, height=5.5cm,
     date coordinates in=x,
     xmin=1998-01-01, xmax=2025-12-31,
     xtick={2000-01-01,2005-01-01,2010-01-01,2015-01-01,2020-01-01,2025-01-01},
     restrict x to domain*=1998-01-01:2025-12-31,
     xticklabel=\year,
-    ymin=0, ymax=1,
-    ytick={0,0.5,1},
-    ylabel={$p_{\mathrm{crisis}}$},
     grid=major, grid style={gray!20},
     tick label style={font=\small},
     table/col sep=comma,
 }}
+
+% p_crisis line chart, shared by all three regime figures
+\pgfplotsset{pcrisis/.style={
+    timechart,
+    ymin=0, ymax=1,
+    ytick={0,0.5,1},
+    ylabel={$p_{\mathrm{crisis}}$},
+}}
+
+% Portfolio value (NAV) line chart
+\pgfplotsset{navchart/.style={
+    timechart,
+    ymin=0.5, ymax=4,
+    ytick={1,2,3,4},
+    ylabel={NAV},
+}}
+
+% Crisis periods (crises.txt): grey shading from peak to even,
+% vertical red lines at peak, trough and even.
+% Vertical extent is \crisisymin to \crisisymax (set to the axis ymin/ymax).
+\newcommand{\crisisymin}{0}
+\newcommand{\crisisymax}{1}
+\newcommand{\crisis}[3]{%
+    \addplot[forget plot, draw=none, fill=gray!25] coordinates {(#1,\crisisymin) (#3,\crisisymin) (#3,\crisisymax) (#1,\crisisymax)} --cycle;
+    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#1,\crisisymin) (#1,\crisisymax)};
+    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#2,\crisisymin) (#2,\crisisymax)};
+    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#3,\crisisymin) (#3,\crisisymax)};
+}
+\newcommand{\crises}{%
+    \crisis{2000-03-23}{2002-10-09}{2007-05-31}% C1
+    \crisis{2007-10-09}{2009-03-09}{2013-03-28}% C2
+    \crisis{2018-09-21}{2018-12-24}{2019-04-23}% C3
+    \crisis{2020-02-19}{2020-03-23}{2020-08-12}% C4
+    \crisis{2022-01-03}{2022-10-12}{2024-01-19}% C5
+    \crisis{2025-02-19}{2025-04-08}{2025-06-26}% C6
+}
 
 
 
@@ -254,6 +288,7 @@ Methodology and calculation 1:1 to the paper
     \centering
     \begin{tikzpicture}
         \begin{axis}[pcrisis]
+            \crises
             \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\changepointfile};
             \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
         \end{axis}
@@ -269,6 +304,7 @@ Methodology and calculation 1:1 to the paper
     \centering
     \begin{tikzpicture}
         \begin{axis}[pcrisis]
+            \crises
             \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\hmmfile};
             \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
         \end{axis}
@@ -284,12 +320,32 @@ Methodology and calculation 1:1 to the paper
     \centering
     \begin{tikzpicture}
         \begin{axis}[pcrisis]
+            \crises
             \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\wassersteinfile};
             \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
         \end{axis}
     \end{tikzpicture}
     \caption{Wasserstein clustering (S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$.}
     \label{fig:pcrisis_wasserstein}
+\end{figure}
+
+
+\section{Portfolio Performance}
+
+\subsection{LSTM (Changepoint VIX)}
+
+\begin{figure}[htbp]
+    \centering
+    \renewcommand{\crisisymin}{0.5}
+    \renewcommand{\crisisymax}{4}
+    \begin{tikzpicture}
+        \begin{axis}[navchart]
+            \crises
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmvaluefile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV).}
+    \label{fig:nav_lstm_changepoint}
 \end{figure}
 
 
