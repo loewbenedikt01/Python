@@ -23,6 +23,10 @@
 \newcommand{\hmmfile}{regime_hmm_gspc_monthly.csv}
 \newcommand{\wassersteinfile}{regime_wasserstein_gspc_vix_monthly.csv}
 \newcommand{\lstmvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_monthly_value.csv}
+\newcommand{\lstmbasevaluefile}{lstm_t_10_holdout_rank_monthly_monthly_value.csv}
+\newcommand{\lstmchangepointhrpvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_hrp_monthly_monthly_value.csv}
+\newcommand{\lstmhmmvaluefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_monthly_value.csv}
+\newcommand{\lstmwassersteinvaluefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_monthly_value.csv}
 
 % Time-series line chart 1998-2025, shared by all figures
 \pgfplotsset{timechart/.style={
@@ -44,6 +48,32 @@
     ytick={0,0.5,1},
     ylabel={$p_{\mathrm{crisis}}$},
 }}
+
+% S&P 500 cumulative log return underlay (right axis), drawn below a pcrisis axis
+\newcommand{\spfile}{sp500_daily_returns.csv}
+\pgfplotsset{spunderlay/.style={
+    timechart,
+    ymin=-0.5, ymax=2,
+    ytick={-0.5,0,0.5,1,1.5,2},
+    axis y line*=right, axis x line=none,
+    ylabel={S\&P 500 cum.\ log return},
+    grid=none,
+}}
+% Regime p_crisis over S&P 500 cumulative log return; #1 = regime file
+\newcommand{\regimevssp}[1]{%
+    \begin{tikzpicture}
+        \renewcommand{\crisisymin}{-0.5}%
+        \renewcommand{\crisisymax}{2}%
+        \begin{axis}[spunderlay]
+            \crises
+            \addplot[gray!70, line width=0.4pt] table[x=date, y expr=ln(\thisrow{nav})] {\spfile};
+        \end{axis}
+        \begin{axis}[pcrisis, axis y line*=left]
+            \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {#1};
+            \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
+        \end{axis}
+    \end{tikzpicture}%
+}
 
 % Portfolio value (NAV) line chart
 \pgfplotsset{navchart/.style={
@@ -330,7 +360,48 @@ Methodology and calculation 1:1 to the paper
 \end{figure}
 
 
+\subsection{Regimes vs.\ S\&P 500}
+
+\begin{figure}[htbp]
+    \centering
+    \regimevssp{\changepointfile}
+    \caption{Changepoint detection (VIX): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
+    \label{fig:pcrisis_sp_changepoint}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \regimevssp{\hmmfile}
+    \caption{Hidden Markov Model (S\&P 500): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
+    \label{fig:pcrisis_sp_hmm}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \regimevssp{\wassersteinfile}
+    \caption{Wasserstein clustering (S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
+    \label{fig:pcrisis_sp_wasserstein}
+\end{figure}
+
+
 \section{Portfolio Performance}
+
+\subsection{LSTM (No Regime)}
+
+\begin{figure}[htbp]
+    \centering
+    \renewcommand{\crisisymin}{0.5}
+    \renewcommand{\crisisymax}{18}
+    \begin{tikzpicture}
+        \begin{axis}[navchart, ymax=18, ytick={3,6,9,12,15,18}]
+            \crises
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmbasevaluefile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{LSTM ($t=10$, holdout, rank) without regime overlay: monthly portfolio value (NAV).}
+    \label{fig:nav_lstm_base}
+\end{figure}
+
 
 \subsection{LSTM (Changepoint VIX)}
 
@@ -346,6 +417,57 @@ Methodology and calculation 1:1 to the paper
     \end{tikzpicture}
     \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV).}
     \label{fig:nav_lstm_changepoint}
+\end{figure}
+
+
+\subsection{LSTM (Changepoint VIX, HRP)}
+
+\begin{figure}[htbp]
+    \centering
+    \renewcommand{\crisisymin}{0.5}
+    \renewcommand{\crisisymax}{14}
+    \begin{tikzpicture}
+        \begin{axis}[navchart, ymax=14, ytick={2,4,6,8,10,12,14}]
+            \crises
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmchangepointhrpvaluefile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and HRP: monthly portfolio value (NAV).}
+    \label{fig:nav_lstm_changepoint_hrp}
+\end{figure}
+
+
+\subsection{LSTM (HMM S\&P 500)}
+
+\begin{figure}[htbp]
+    \centering
+    \renewcommand{\crisisymin}{0.5}
+    \renewcommand{\crisisymax}{8}
+    \begin{tikzpicture}
+        \begin{axis}[navchart, ymax=8, ytick={2,4,6,8}]
+            \crises
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmhmmvaluefile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV).}
+    \label{fig:nav_lstm_hmm}
+\end{figure}
+
+
+\subsection{LSTM (Wasserstein S\&P 500 and VIX)}
+
+\begin{figure}[htbp]
+    \centering
+    \renewcommand{\crisisymin}{0.5}
+    \renewcommand{\crisisymax}{6}
+    \begin{tikzpicture}
+        \begin{axis}[navchart, ymax=6, ytick={1,2,3,4,5,6}]
+            \crises
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmwassersteinvaluefile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV).}
+    \label{fig:nav_lstm_wasserstein}
 \end{figure}
 
 
