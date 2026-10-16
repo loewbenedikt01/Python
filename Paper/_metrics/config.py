@@ -81,6 +81,7 @@ EMBARGO_MONTHS_XGB = {
 
 VALIDATION_MONTHS_XGB   = 24        # fixed validation block ending at the rebalance date
 
+
 XGB_FIXED = {
     'objective'        : 'reg:pseudohubererror',
     'n_estimators'     : 300,
@@ -94,6 +95,22 @@ XGB_GRID = {
     'min_child_weight'  : [1, 5, 10, 20],
     'reg_lambda'        : [1, 5, 10],
 }
+
+'''
+# Test of larger grid 720 vs 108 old one
+XGB_FIXED = {
+    'objective'        : 'reg:pseudohubererror',
+}
+
+XGB_GRID = {
+    'learning_rate'     : [0.005, 0.01, 0.03],
+    'max_depth'         : [1, 2, 3, 5, 10],
+    'min_child_weight'  : [1, 3, 5, 10],
+    'subsample'         : [0.8, 1.0],
+    'colsample_bytree'  : [0.8, 1.0],
+    'n_estimators'      : [100, 200, 300],
+}
+'''
 
 # ----
 # Configuration for RF Weights Calculation
