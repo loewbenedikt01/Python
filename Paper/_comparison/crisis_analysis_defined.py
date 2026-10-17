@@ -20,22 +20,44 @@ frequency (benchmark, all baselines, controls, all regime runs), each
 compared with the benchmark and with its own baseline (base_run).
 
 2. and 3. carry all columns of 1., plus
+  fallback_run          regime runs: the run holding the fallback of their
+                        crisis target all the time (none for cash)
   full_d_base, ptt_d_base, ttp_d_base
                         return against base_run over the same window,
                         relative: (1 + r) / (1 + r_base) - 1; 0 for the
                         baseline, empty for the benchmark (overall: full only)
-  hit_rate_base_*, hit_count_base_*
-                        overall sheet: hit rates against base_run instead
-                        of the benchmark (empty for baselines and benchmark)
-  exit_lag, reentry_lag, defensive_share, n_switches
-                        crisis sheets, regime runs only (detector_diagnostics)
+  full_d_fb, ptt_d_fb, ttp_d_fb
+                        the same against fallback_run: an overlay that falls
+                        back to HRP has to beat pure HRP, not only its base
+                        model, before the switching adds value
+  missed_rally, pre_peak_d_base
+                        crisis sheets, regime runs already defensive at the
+                        peak: base model return from the switch to the peak,
+                        and the run against its base over that interval
+                        (the cost of switching early; add_switch_cost)
+  hit_rate_base_*, hit_count_base_*, hit_rate_fb_*, hit_count_fb_*
+                        overall sheet: hit rates against base_run /
+                        fallback_run instead of the benchmark
+plus the sheet timing: detector timing per detector, series, frequency and
+crisis (detector_diagnostics: exit_lag, reentry_lag,
+days_defensive_before_peak, late_defensive, defensive_after_trough_days,
+defensive_share, n_switches).  The detector reads the market, not the
+portfolio, so the timing is the same for every model and crisis target and
+is reported once (identical checks this).  3. also has detector_avg: the
+deltas against base and fallback averaged over the models per detector,
+series, crisis target, frequency and crisis.  The models of one detector
+share its switching dates and are not independent observations: test these
+averages, or cluster by detector x frequency, not the model rows.
 Every number depends only on the run and the window, not on the workbook
 it appears in, so the three outputs agree.
 
 Methodology note: a detector can only switch on the rebalancing dates of its
 frequency (regime.csv holds one decision per rebalancing date; the holding
 then applies until the next one).  With yearly rebalancing it reacts at most
-once a year, so its timing is coarse by design.
+once a year, so its timing is coarse by design.  The detector signals are
+point-in-time (value at d from data through d-1; HMM: recursive filter,
+WK-means: monthly refits on past windows, changepoint: sequential cpm alarms),
+so a decision never uses data after its date.
 
 Runs are found as in compare_all.py
 (_output/<model>/<run>_<frequency>/raw/daily_returns.csv).
@@ -114,7 +136,8 @@ SAVE_DIR    = ca.SAVE_DIR
 REGIME_DIR  = SAVE_DIR / 'crisis_analysis_regime'
 
 KEY_COLS    = ['model', 'run', 'frequency']
-REGIME_KEYS = ['model', 'run', 'frequency', 'role', 'base_run', 'detector', 'series', 'crisis_target']
+REGIME_KEYS = ['model', 'run', 'frequency', 'role', 'base_run', 'fallback_run',
+               'detector', 'series', 'crisis_target']
 
 # Fallback of each crisis target: the portfolio switched into, held all the
 # time (does switching add anything over always holding it?)
@@ -122,15 +145,21 @@ FALLBACKS = {
     'min_var': lambda r: r['crisis_target'] == 'always min_var',
     'hrp':     lambda r: r['model'] == 'hrp' and r['detector'] == 'none' and r['crisis_target'] == '',
 }
-DIAG_COLS   = ['exit_lag', 'reentry_lag', 'defensive_share', 'n_switches']
+# Detector timing per crisis (detector_diagnostics): a property of detector x
+# series x frequency, reported once in the timing sheet, not per model row
+TIMING_COLS = ['exit_lag', 'reentry_lag', 'days_defensive_before_peak', 'late_defensive',
+               'defensive_after_trough_days', 'defensive_share', 'n_switches']
+TIMING_KEYS = ['frequency', 'detector', 'series', 'crisis']
 
 PCT_COLS = ['full_cum_return', 'full_excess_return', 'full_max_dd', 'full_ulcer', 'full_ann_vol',
             'full_underwater_share', 'full_cagr', 'full_turnover_pa',
             'hit_rate_full', 'hit_rate_ptt', 'hit_rate_ttp',
             'hit_rate_base_full', 'hit_rate_base_ptt', 'hit_rate_base_ttp',
+            'hit_rate_fb_full', 'hit_rate_fb_ptt', 'hit_rate_fb_ttp',
             'ptt_cum_return', 'ptt_excess_return', 'ptt_max_dd',
             'ttp_cum_return', 'ttp_excess_return', 'ttp_max_dd',
-            'full_d_base', 'ptt_d_base', 'ttp_d_base', 'defensive_share']
+            'full_d_base', 'ptt_d_base', 'ttp_d_base', 'full_d_fb', 'ptt_d_fb', 'ttp_d_fb',
+            'missed_rally', 'pre_peak_d_base', 'defensive_share']
 
 WINDOWS = ([('overall', overall[0], False)]
            + [(f'C{i}', c, True) for i, c in enumerate(main_crises, 1)])
@@ -262,16 +291,28 @@ def regime_groups(runs: list[dict]):
             for target in sorted({r['crisis_target'] for r in regimes}):
                 if target not in FALLBACKS:
                     continue
-                fb = next((r for r in runs if r['frequency'] == freq and FALLBACKS[target](r)), None)
+                fb = _fallback(runs, target, freq)
                 if fb is None:
                     print(f'[crisis_analysis] {model} {freq}: no fallback run for target {target}')
                 elif fb is not base:
                     fallbacks.append(fb)
             group = [bench, base] + fallbacks + regimes
             roles = ['benchmark', 'baseline'] + ['fallback'] * len(fallbacks) + ['regime'] * len(regimes)
-            info = [{'role': role, 'base_run': None if role == 'benchmark' else base['run']}
-                    for role in roles]
+            info = [{'role': role, 'base_run': None if role == 'benchmark' else base['run'],
+                     'fallback_run': _fallback_name(runs, r) if role == 'regime' else None}
+                    for r, role in zip(group, roles)]
             yield model, freq, group, info
+
+
+def _fallback(runs: list[dict], target: str, freq: str) -> dict | None:
+    '''The run holding the fallback of crisis target `target` all the time, or None.'''
+    test = FALLBACKS.get(target)
+    return next((r for r in runs if r['frequency'] == freq and test(r)), None) if test else None
+
+
+def _fallback_name(runs: list[dict], r: dict) -> str | None:
+    fb = _fallback(runs, r['crisis_target'], r['frequency'])
+    return fb['run'] if fb is not None else None
 
 
 def all_groups(runs: list[dict]):
@@ -292,14 +333,16 @@ def all_groups(runs: list[dict]):
         group = [bench] + others
         info = []
         for r in group:
+            own_base = r['base']['run'] if r.get('base') else None
             if r is bench:
-                info.append({'role': 'benchmark', 'base_run': None})
+                info.append({'role': 'benchmark', 'base_run': None, 'fallback_run': None})
             elif r['detector'] != 'none':
-                info.append({'role': 'regime', 'base_run': r['base']['run'] if r.get('base') else None})
+                info.append({'role': 'regime', 'base_run': own_base,
+                             'fallback_run': _fallback_name(runs, r)})
             elif r['crisis_target'] == 'always min_var':
-                info.append({'role': 'control', 'base_run': r['base']['run'] if r.get('base') else None})
+                info.append({'role': 'control', 'base_run': own_base, 'fallback_run': None})
             else:
-                info.append({'role': 'baseline', 'base_run': r['run']})
+                info.append({'role': 'baseline', 'base_run': r['run'], 'fallback_run': None})
         yield freq, group, info
 
 
@@ -327,24 +370,36 @@ def detector_diagnostics(run: dict, c: dict) -> dict:
       reentry_lag      defined trough -> first day back in the model
                        portfolio; negative = back before the trough; empty =
                        not defensive peak -> trough, or never back
+      days_defensive_before_peak
+                       defensive at the peak: days since the switch (= -exit_lag);
+                       otherwise 0
+      late_defensive   True if not defensive peak -> trough but defensive
+                       between trough and recovery: took the full fall, then
+                       sat out (part of) the rebound
+      defensive_after_trough_days
+                       late_defensive only: trough -> first defensive day
       defensive_share  share of days defensive, peak -> recovery
       n_switches       changes between model and crisis portfolio, peak -> recovery
+    _switch: date of the switch into the spell running at the peak (None if
+    not defensive at the peak), for the cost of being defensive early.
     '''
+    empty = {**dict.fromkeys(TIMING_COLS, np.nan), '_switch': None}
     d = defensive(run)
     if d is None:
-        return dict.fromkeys(DIAG_COLS, np.nan)
+        return empty
     on = d.to_numpy()
     pos = lambda date: int(d.index.searchsorted(pd.Timestamp(date), side='right')) - 1
     i_p, i_t, i_e = pos(c['peak']), pos(c['trough']), pos(c['even'])
     if i_p < 0:
-        return dict.fromkeys(DIAG_COLS, np.nan)
+        return empty
 
+    switch = None
     ptt = on[i_p + 1:i_t + 1]
     if on[i_p]:
         j = i_p
         while j > 0 and on[j - 1]:
             j -= 1
-        exit_lag = j - i_p
+        exit_lag, switch = j - i_p, d.index[j]
     elif ptt.any():
         exit_lag = int(np.argmax(ptt)) + 1
     else:
@@ -359,39 +414,120 @@ def detector_diagnostics(run: dict, c: dict) -> dict:
     else:
         reentry_lag = np.nan
 
+    ttp = on[i_t + 1:i_e + 1]
+    late = bool(not on[i_p:i_t + 1].any() and ttp.any())
     span = on[i_p:i_e + 1]
     return {
-        'exit_lag':        exit_lag,
-        'reentry_lag':     reentry_lag,
-        'defensive_share': float(span[1:].mean()) if len(span) > 1 else np.nan,
-        'n_switches':      int(np.abs(np.diff(span.astype(int))).sum()),
+        'exit_lag':                    exit_lag,
+        'reentry_lag':                 reentry_lag,
+        'days_defensive_before_peak':  -exit_lag if switch is not None else 0,
+        'late_defensive':              late,
+        'defensive_after_trough_days': int(np.argmax(ttp)) + 1 if late else np.nan,
+        'defensive_share':             float(span[1:].mean()) if len(span) > 1 else np.nan,
+        'n_switches':                  int(np.abs(np.diff(span.astype(int))).sum()),
+        '_switch':                     switch,
     }
 
 
-def add_diagnostics(sheets: dict, group: list[dict], info: list[dict]) -> None:
-    '''DIAG_COLS on the crisis sheets; regime runs only.'''
+def timing_table(group: list[dict], info: list[dict]) -> pd.DataFrame:
+    '''
+    One row per detector, series, frequency and crisis (TIMING_KEYS): the
+    detector reads the market, not the portfolio, so the timing is the same
+    for every model and crisis target.  n_runs = regime runs behind the row;
+    identical = whether they all gave the same values (they should).
+    '''
+    rows = []
+    for r, i in zip(group, info):
+        if i['role'] != 'regime':
+            continue
+        for k, c in enumerate(main_crises, 1):
+            dg = detector_diagnostics(r, c)
+            rows.append({'frequency': r['frequency'], 'detector': r['detector'], 'series': r['series'],
+                         'crisis': f'C{k}', **{col: dg[col] for col in TIMING_COLS}})
+    if not rows:
+        return pd.DataFrame(columns=TIMING_KEYS + TIMING_COLS)
+    df = pd.DataFrame(rows)
+    g = df.groupby(TIMING_KEYS, sort=False)
+    out = g[TIMING_COLS].first()
+    out['n_runs'] = g.size()
+    out['identical'] = g[TIMING_COLS].nunique(dropna=False).max(axis=1).eq(1)
+    return out.reset_index()
+
+
+def add_switch_cost(sheets: dict, group: list[dict], info: list[dict]) -> None:
+    '''
+    Crisis sheets, regime runs already defensive at the peak: the cost of the
+    early switch, from the switch date to the defined peak.
+      missed_rally     the base model's return over that interval
+      pre_peak_d_base  the run against its base model over that interval,
+                       relative; with the cash target about -missed_rally
+    Empty for every other row.
+    '''
+    by_name = {r['run']: r for r in group}
     for name, c, phases in WINDOWS:
         if not phases:
             continue
-        diag = [detector_diagnostics(r, c) if i['role'] == 'regime'
-                else dict.fromkeys(DIAG_COLS, np.nan) for r, i in zip(group, info)]
-        df = sheets[name]
-        for col in DIAG_COLS:
-            df[col] = [d[col] for d in diag]
+        missed, rel = [], []
+        for r, i in zip(group, info):
+            sw = detector_diagnostics(r, c)['_switch'] if i['role'] == 'regime' else None
+            base = by_name.get(i.get('base_run'))
+            if sw is None or base is None:
+                missed.append(np.nan)
+                rel.append(np.nan)
+                continue
+            b = cumulative_return(ca._slice(base['returns'], sw, c['peak']))
+            o = cumulative_return(ca._slice(r['returns'], sw, c['peak']))
+            missed.append(b)
+            rel.append((1 + o) / (1 + b) - 1)
+        sheets[name]['missed_rally'] = missed
+        sheets[name]['pre_peak_d_base'] = rel
 
 
-def _base_value(df: pd.DataFrame, col: str) -> pd.Series:
-    '''Value of col in each row's base_run row (NaN without base_run).'''
-    return df['base_run'].map(df.set_index('run')[col])
+def _base_value(df: pd.DataFrame, col: str, ref: str = 'base_run') -> pd.Series:
+    '''Value of col in the row named in each row's ref column (NaN without one).'''
+    return df[ref].map(df.set_index('run')[col])
+
+
+REFS = (('base_run', 'base'), ('fallback_run', 'fb'))      # (reference column, suffix)
 
 
 def add_base_deltas(sheets: dict) -> None:
-    '''<phase>_d_base: relative return against the row's base_run; empty without one.'''
+    '''
+    <phase>_d_base / <phase>_d_fb: relative return against the row's base_run /
+    fallback_run; empty without one.
+    '''
     for df in sheets.values():
-        for phase in ('full', 'ptt', 'ttp'):
-            col = f'{phase}_cum_return'
-            if col in df:
-                df[f'{phase}_d_base'] = (1 + df[col]) / (1 + _base_value(df, col)) - 1
+        for ref, suf in REFS:
+            for phase in ('full', 'ptt', 'ttp'):
+                col = f'{phase}_cum_return'
+                if col in df and ref in df:
+                    df[f'{phase}_d_{suf}'] = (1 + df[col]) / (1 + _base_value(df, col, ref)) - 1
+
+
+def detector_averages(sheets_by_freq: dict) -> pd.DataFrame:
+    '''
+    Deltas against base and fallback averaged over the models, one row per
+    frequency, crisis, detector, series and crisis target (n_models = runs
+    averaged).  The models of one detector share its switching dates, so they
+    are not independent; test these averages (or cluster by detector x
+    frequency) instead of the model rows.
+    '''
+    parts = []
+    for freq, sheets in sheets_by_freq.items():
+        for name, df in sheets.items():
+            reg = df[df['role'] == 'regime']
+            cols = [c for c in reg.columns
+                    if ('_d_base' in c or '_d_fb' in c) and reg[c].dtype.kind in 'fi']
+            if reg.empty or not cols:
+                continue
+            g = reg.groupby(['detector', 'series', 'crisis_target'], sort=False)
+            avg = g[cols].mean()
+            avg.insert(0, 'n_models', g.size())
+            avg = avg.reset_index()
+            avg.insert(0, 'crisis', name)
+            avg.insert(0, 'frequency', freq)
+            parts.append(avg)
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
 
 # ----
@@ -494,21 +630,30 @@ def run_all(tag: str, prefix: str, build, add_deltas, tests, write) -> None:
     def regime_sheets(group, info):
         sheets = build(group, group[0], REGIME_KEYS, info)
         add_deltas(sheets)
-        add_diagnostics(sheets, group, info)
+        add_switch_cost(sheets, group, info)
         add_hit_rates(sheets, tests, ref_col='base_run', suffix='_base')
+        add_hit_rates(sheets, tests, ref_col='fallback_run', suffix='_fb')
         return sheets
 
     REGIME_DIR.mkdir(parents=True, exist_ok=True)
     for model, freq, group, info in regime_groups(all_runs):
         path = REGIME_DIR / f'{prefix}_{model}_{freq}.xlsx'
-        write(regime_sheets(group, info), path, len(REGIME_KEYS))
+        sheets = regime_sheets(group, info)
+        sheets['timing'] = timing_table(group, info)
+        write(sheets, path, len(REGIME_KEYS))
         n_fb = sum(i['role'] == 'fallback' for i in info)
         print(f'[{tag}] {model} {freq}: baseline {group[1]["run"]}, {n_fb} fallback, '
               f'{len(group) - 2 - n_fb} regime runs; saved to {path}')
 
-    big = {}
+    big, by_freq, timing = {}, {}, []
     for freq, group, info in all_groups(all_runs):
-        big.update({f'{freq}_{name}': df for name, df in regime_sheets(group, info).items()})
+        by_freq[freq] = regime_sheets(group, info)
+        big.update({f'{freq}_{name}': df for name, df in by_freq[freq].items()})
+        timing.append(timing_table(group, info))
+    big['timing'] = pd.concat(timing, ignore_index=True)
+    big['detector_avg'] = detector_averages(by_freq)
+    if not big['timing']['identical'].all():
+        print(f'[{tag}] timing differs between models of the same detector: see column identical')
     path = SAVE_DIR / f'{prefix}_all.xlsx'
     write(big, path, len(REGIME_KEYS))
     print(f'[{tag}] all runs: {len(big)} sheets; saved to {path}')

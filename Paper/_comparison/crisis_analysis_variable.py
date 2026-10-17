@@ -19,6 +19,8 @@ A portfolio whose lowest value stays above 1 - NO_DD_TOL has no drawdown: no
 trough or recovery date, ptt_days = ttp_days = 0, own window = defined window.
 Not recovered = censored: full_days, full_days_underwater and ttp_days are then
 counted up to the recovery search end and mean "at least this many days".
+C1 ... C5 are censored by the next crisis; C6 by the end of the data
+(2025-12-31), so an unrecovered C6 portfolio may simply not have had the time.
 Sheet overall: anchoring at the 1998 start would only catch an early dip, so
 the start is the portfolio's own high-water mark before its deepest drawdown
 of the full period, searched to the end of the data.  These episodes differ
@@ -38,12 +40,17 @@ Output (as in crisis_analysis_defined.py, see there for roles and fallbacks)
        ttp_d_base_days      ttp_days - base_run (negative = faster); empty if
                             either has not recovered (ttp_d_base_censored)
                             (0 for the baseline, empty for the benchmark)
-       exit_lag, reentry_lag, defensive_share, n_switches
-                            regime runs only, on the defined crisis dates
-                            (crisis_analysis_defined.detector_diagnostics;
-                            switches only on rebalancing dates)
-     and on the overall sheet hit_rate_base_* / hit_count_base_*: hit rates
-     against base_run (empty for baselines and benchmark).
+       full_d_fb_ulcer, ptt_d_fb_depth, ttp_d_fb_days, ttp_d_fb_censored
+                            the same against fallback_run (the crisis target
+                            held all the time)
+       missed_rally, pre_peak_d_base
+                            cost of being defensive before the peak
+                            (crisis_analysis_defined.add_switch_cost)
+     on the overall sheet hit_rate_base_* / hit_count_base_* and
+     hit_rate_fb_* / hit_count_fb_*: hit rates against base_run / fallback_run,
+     and the sheets timing (detector timing, once per detector, series,
+     frequency and crisis; switches only on rebalancing dates) and, in 3.,
+     detector_avg (deltas averaged over the models per detector).
   Every number depends only on the run and the crisis, not on the workbook.
 Rows: one per portfolio (model, run, frequency).  Days = trading days.
 
@@ -104,7 +111,7 @@ import pandas as pd
 import compare_all as ca
 from crises import overall, main_crises
 from metrics import maximum_drawdown, ulcer_index
-from crisis_analysis_defined import KEY_COLS, _base_value, add_hit_rates, run_all
+from crisis_analysis_defined import KEY_COLS, REFS, _base_value, add_hit_rates, run_all
 
 
 # ----
@@ -118,7 +125,9 @@ PCT_COLS  = ['full_anchored_dd', 'full_hwm_dd', 'full_ulcer', 'full_ulcer_common
              'ptt_depth', 'ptt_max_dd',
              'ttp_return_to_even', 'hit_rate_full', 'hit_rate_ptt', 'hit_rate_ttp',
              'hit_rate_base_full', 'hit_rate_base_ptt', 'hit_rate_base_ttp',
-             'full_d_base_ulcer', 'ptt_d_base_depth', 'defensive_share']
+             'hit_rate_fb_full', 'hit_rate_fb_ptt', 'hit_rate_fb_ttp',
+             'full_d_base_ulcer', 'ptt_d_base_depth', 'full_d_fb_ulcer', 'ptt_d_fb_depth',
+             'missed_rally', 'pre_peak_d_base', 'defensive_share']
 DATE_COLS = ['peak_date', 'trough_date', 'recovery_date', 'full_common_end']
 
 
@@ -255,21 +264,24 @@ def vs_bench(row: dict, b: dict) -> None:
 
 def add_base_deltas(sheets: dict) -> None:
     '''
-    Crisis sheets: full_d_base_ulcer, ptt_d_base_depth, ttp_d_base_days (and
-    ttp_d_base_censored) against the row's base_run; 0 for the baseline,
-    empty without base_run (benchmark).  ttp_d_base_days is empty if either
-    has not recovered.
+    Crisis sheets, for each reference of REFS (base_run -> _d_base_,
+    fallback_run -> _d_fb_): full_d_*_ulcer, ptt_d_*_depth, ttp_d_*_days (and
+    ttp_d_*_censored); 0 for the reference itself, empty without one.
+    ttp_d_*_days is empty if either has not recovered.
     '''
     for name, df in sheets.items():
         if name == 'overall' or 'ttp_days' not in df:
             continue
-        keep = df['base_run'].notna()
-        b_cens = _base_value(df, 'full_not_recovered').eq(True)
-        censored = df['full_not_recovered'].astype(bool) | b_cens
-        df['full_d_base_ulcer'] = df['full_ulcer_common'] - _base_value(df, 'full_ulcer_common')
-        df['ptt_d_base_depth'] = df['ptt_depth'] - _base_value(df, 'ptt_depth')
-        df['ttp_d_base_days'] = (df['ttp_days'] - _base_value(df, 'ttp_days')).where(~censored)
-        df['ttp_d_base_censored'] = censored.astype(object).where(keep)
+        for ref, suf in REFS:
+            if ref not in df:
+                continue
+            ref_val = lambda col: _base_value(df, col, ref)
+            keep = df[ref].notna()
+            censored = df['full_not_recovered'].astype(bool) | ref_val('full_not_recovered').eq(True)
+            df[f'full_d_{suf}_ulcer'] = df['full_ulcer_common'] - ref_val('full_ulcer_common')
+            df[f'ptt_d_{suf}_depth'] = df['ptt_depth'] - ref_val('ptt_depth')
+            df[f'ttp_d_{suf}_days'] = (df['ttp_days'] - ref_val('ttp_days')).where(~censored)
+            df[f'ttp_d_{suf}_censored'] = censored.astype(object).where(keep)
 
 
 def _write(sheets: dict, path, n_keys: int = len(KEY_COLS)) -> None:
