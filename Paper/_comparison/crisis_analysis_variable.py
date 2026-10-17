@@ -26,7 +26,25 @@ between portfolios (mcap: dot-com peak 2000 -> GFC trough 2009, most others:
 GFC only), so ptt_days_vs_defined and the benchmark columns stay empty there;
 the overall sheet carries the hit rates over C1 ... C6 instead.
 
-Output: _output/_comparison/crisis_analysis_variable_<frequency>.xlsx
+Output (as in crisis_analysis_defined.py, see there for roles and fallbacks)
+  1. baselines: _output/_comparison/crisis_analysis_variable_<frequency>.xlsx
+  2. per regime model and frequency (benchmark, baseline, fallbacks, regime runs):
+     _output/_comparison/crisis_analysis_regime/crisis_analysis_variable_<model>_<frequency>.xlsx
+  3. all runs, sheets <frequency>_<sheet>:
+     _output/_comparison/crisis_analysis_variable_all.xlsx
+  2. and 3. carry all columns of 1., plus on the crisis sheets
+       full_d_base_ulcer    full_ulcer_common - base_run (negative = less pain)
+       ptt_d_base_depth     ptt_depth - base_run (positive = shallower)
+       ttp_d_base_days      ttp_days - base_run (negative = faster); empty if
+                            either has not recovered (ttp_d_base_censored)
+                            (0 for the baseline, empty for the benchmark)
+       exit_lag, reentry_lag, defensive_share, n_switches
+                            regime runs only, on the defined crisis dates
+                            (crisis_analysis_defined.detector_diagnostics;
+                            switches only on rebalancing dates)
+     and on the overall sheet hit_rate_base_* / hit_count_base_*: hit rates
+     against base_run (empty for baselines and benchmark).
+  Every number depends only on the run and the crisis, not on the workbook.
 Rows: one per portfolio (model, run, frequency).  Days = trading days.
 
 Columns (bench = BENCHMARK run of the same frequency)
@@ -41,13 +59,14 @@ Columns (bench = BENCHMARK run of the same frequency)
                           running high (standard definition, metrics.ulcer_index);
                           own windows differ in length, so a longer recovery
                           can lower it: not used for comparisons
-  full_ulcer_common       Ulcer index over the common horizon of the crisis:
-                          defined start -> full_common_end = the latest own
-                          window end of any portfolio (recovery date, or the
-                          cut-off if one is censored); drawdowns from the
-                          running high until the own recovery, 0 after.  Same
-                          number of days for every portfolio, so a longer
-                          recovery raises it.  Crisis sheets only.
+  full_ulcer_common       Ulcer index over a fixed horizon per crisis:
+                          defined start -> full_common_end = the next crisis
+                          peak (C6: end of the data), the same as the
+                          recovery search end; drawdowns from the running
+                          high until the own recovery, 0 after.  Same number
+                          of days for every portfolio, so a longer recovery
+                          raises it, and one value per run and crisis in
+                          every workbook.  Crisis sheets only.
   full_common_end         end of that common horizon
   full_no_drawdown        True if the lowest value stays above 1 - NO_DD_TOL
   full_not_recovered      True if not back at the anchor by the recovery
@@ -85,9 +104,7 @@ import pandas as pd
 import compare_all as ca
 from crises import overall, main_crises
 from metrics import maximum_drawdown, ulcer_index
-from crisis_analysis_defined import (
-    BENCHMARK, FREQ_ORDER, SAVE_DIR, SKIP_MODELS, KEY_COLS, _sort_key, add_hit_rates,
-)
+from crisis_analysis_defined import KEY_COLS, _base_value, add_hit_rates, run_all
 
 
 # ----
@@ -99,7 +116,9 @@ NO_DD_TOL            = 0.01    # lowest value above 1 - NO_DD_TOL = no drawdown
 
 PCT_COLS  = ['full_anchored_dd', 'full_hwm_dd', 'full_ulcer', 'full_ulcer_common', 'full_gap_at_cutoff',
              'ptt_depth', 'ptt_max_dd',
-             'ttp_return_to_even', 'hit_rate_full', 'hit_rate_ptt', 'hit_rate_ttp']
+             'ttp_return_to_even', 'hit_rate_full', 'hit_rate_ptt', 'hit_rate_ttp',
+             'hit_rate_base_full', 'hit_rate_base_ptt', 'hit_rate_base_ttp',
+             'full_d_base_ulcer', 'ptt_d_base_depth', 'defensive_share']
 DATE_COLS = ['peak_date', 'trough_date', 'recovery_date', 'full_common_end']
 
 
@@ -195,10 +214,14 @@ def common_ulcer(returns: pd.Series, ep: dict, start, end) -> float:
 
 def _faster(r, b, days: str) -> float:
     '''
-    Back at the start value sooner than the benchmark (censored = not
+    Back at the start value sooner than the reference (censored = not
     recovered by the search end).  Recovered vs not recovered decides; both
-    not recovered: not comparable (NaN).
+    not recovered: not comparable (NaN).  No drawdown = nothing to recover
+    from (days = 0, not censored): a hit against a reference with a
+    drawdown; both without drawdown: not comparable (NaN).
     '''
+    if bool(r['full_no_drawdown']) and bool(b['full_no_drawdown']):
+        return np.nan
     r_cens, b_cens = bool(r['full_not_recovered']), bool(b['full_not_recovered'])
     if r_cens and b_cens:
         return np.nan
@@ -230,13 +253,32 @@ def vs_bench(row: dict, b: dict) -> None:
 # Main
 # ----
 
-def _write(sheets: dict, path) -> None:
+def add_base_deltas(sheets: dict) -> None:
+    '''
+    Crisis sheets: full_d_base_ulcer, ptt_d_base_depth, ttp_d_base_days (and
+    ttp_d_base_censored) against the row's base_run; 0 for the baseline,
+    empty without base_run (benchmark).  ttp_d_base_days is empty if either
+    has not recovered.
+    '''
+    for name, df in sheets.items():
+        if name == 'overall' or 'ttp_days' not in df:
+            continue
+        keep = df['base_run'].notna()
+        b_cens = _base_value(df, 'full_not_recovered').eq(True)
+        censored = df['full_not_recovered'].astype(bool) | b_cens
+        df['full_d_base_ulcer'] = df['full_ulcer_common'] - _base_value(df, 'full_ulcer_common')
+        df['ptt_d_base_depth'] = df['ptt_depth'] - _base_value(df, 'ptt_depth')
+        df['ttp_d_base_days'] = (df['ttp_days'] - _base_value(df, 'ttp_days')).where(~censored)
+        df['ttp_d_base_censored'] = censored.astype(object).where(keep)
+
+
+def _write(sheets: dict, path, n_keys: int = len(KEY_COLS)) -> None:
     from openpyxl.utils import get_column_letter
     with pd.ExcelWriter(path, engine='openpyxl') as xw:
         for name, df in sheets.items():
             df.to_excel(xw, sheet_name=name, index=False)
             ws = xw.sheets[name]
-            ws.freeze_panes = 'D2'
+            ws.freeze_panes = get_column_letter(n_keys + 1) + '2'
             for j, col in enumerate(df.columns, 1):
                 letter = get_column_letter(j)
                 ws.column_dimensions[letter].width = min(max(10, len(str(col)) + 2), 32)
@@ -247,50 +289,46 @@ def _write(sheets: dict, path) -> None:
                         cell.number_format = fmt
 
 
+# (sheet, crisis, recovery search end, own peak)
+WINDOWS = [('overall', overall[0], None, True)]
+for _i, _c in enumerate(main_crises):
+    WINDOWS.append((f'C{_i + 1}', _c,
+                    main_crises[_i + 1]['peak'] if _i + 1 < len(main_crises) else None, False))
+
+
+def build_sheets(group: list[dict], bench: dict, keys=KEY_COLS, info=None) -> dict:
+    sheets = {}
+    for name, c, rec_end, own_peak in WINDOWS:
+        eps = [episode(run['returns'], c, rec_end, own_peak) for run in group]
+        b = eps[group.index(bench)]
+        rows = []
+        for run, ep, i in zip(group, eps, info or [{}] * len(group)):
+            row = {**{k: i[k] if k in i else run[k] for k in keys}, **ep}
+            if ep and not own_peak:
+                # fixed horizon: up to the next crisis peak (last crisis: end of the data)
+                horizon = pd.Timestamp(rec_end) if rec_end else run['returns'].index[-1]
+                row['full_ulcer_common'] = common_ulcer(run['returns'], ep, c['peak'], horizon)
+                row['full_common_end'] = horizon
+            if not own_peak:
+                vs_bench(row, b)
+            else:                     # overall: own episodes differ, no comparison
+                row.update({'ttp_days_vs_bench': np.nan, 'ttp_vs_bench_censored': None})
+            rows.append({k: v for k, v in row.items() if not k.startswith('_')})
+        df = pd.DataFrame(rows)
+        for col in ('ttp_vs_bench_censored', 'ttp_days_vs_bench'):   # next to ttp_days
+            if col in df:
+                df.insert(df.columns.get_loc('ttp_days') + 1, col, df.pop(col))
+        for col in ('full_common_end', 'full_ulcer_common'):         # next to full_ulcer
+            if col in df:
+                df.insert(df.columns.get_loc('full_ulcer') + 1, col, df.pop(col))
+        sheets[name] = df
+    add_hit_rates(sheets, HIT_TESTS)
+    return sheets
+
+
 def main() -> None:
-    runs = [r for r in ca.find_runs() if r['detector'] == 'none' and r['model'] not in SKIP_MODELS]
-    SAVE_DIR.mkdir(parents=True, exist_ok=True)
-    # (sheet, crisis, recovery search end, own peak)
-    windows = [('overall', overall[0], None, True)]
-    for i, c in enumerate(main_crises):
-        nxt = main_crises[i + 1]['peak'] if i + 1 < len(main_crises) else None
-        windows.append((f'C{i + 1}', c, nxt, False))
-    for freq in FREQ_ORDER:
-        group = sorted((r for r in runs if r['frequency'] == freq), key=_sort_key)
-        bench = next((r for r in group if r['model'] == BENCHMARK), None)
-        if bench is None:
-            print(f'[crisis_analysis_variable] no {BENCHMARK} run for {freq}: skipped')
-            continue
-        sheets = {}
-        for name, c, rec_end, own_peak in windows:
-            eps = [episode(run['returns'], c, rec_end, own_peak) for run in group]
-            b = eps[group.index(bench)]
-            # common horizon: latest own window end (recovery or cut-off) of any portfolio
-            horizon = max((e['_end'] for e in eps if e), default=None)
-            rows = []
-            for run, ep in zip(group, eps):
-                row = {**{k: run[k] for k in KEY_COLS}, **ep}
-                if ep and not own_peak:
-                    row['full_ulcer_common'] = common_ulcer(run['returns'], ep, c['peak'], horizon)
-                    row['full_common_end'] = horizon
-                if not own_peak:
-                    vs_bench(row, b)
-                else:                     # overall: own episodes differ, no comparison
-                    row.update({'ttp_days_vs_bench': np.nan, 'ttp_vs_bench_censored': None})
-                rows.append({k: v for k, v in row.items() if not k.startswith('_')})
-            df = pd.DataFrame(rows)
-            for col in ('ttp_vs_bench_censored', 'ttp_days_vs_bench'):   # next to ttp_days
-                if col in df:
-                    df.insert(df.columns.get_loc('ttp_days') + 1, col, df.pop(col))
-            for col in ('full_common_end', 'full_ulcer_common'):         # next to full_ulcer
-                if col in df:
-                    df.insert(df.columns.get_loc('full_ulcer') + 1, col, df.pop(col))
-            sheets[name] = df
-        add_hit_rates(sheets, HIT_TESTS)
-        path = SAVE_DIR / f'crisis_analysis_variable_{freq}.xlsx'
-        _write(sheets, path)
-        print(f'[crisis_analysis_variable] {freq}: {len(group)} portfolios, benchmark '
-              f'{bench["run"]}; saved to {path}')
+    run_all('crisis_analysis_variable', 'crisis_analysis_variable',
+            build_sheets, add_base_deltas, HIT_TESTS, _write)
 
 
 if __name__ == '__main__':
