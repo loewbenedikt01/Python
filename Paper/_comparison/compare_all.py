@@ -10,18 +10,22 @@ same way.
 Sheets
   overall            full period (crises.overall)
   one per crisis     crises.main_crises (and crises.sub_crises with
-                     SUB_CRISES = True): metrics over peak -> recovery, plus
-                     the cumulative return peak -> trough
-  vs_base            every regime run against its own baseline: difference
-                     and p-value per metric (see BASE_TESTS below)
-  windows            the dates of every sheet and the benchmark used
-Rows: one per run and frequency.  The run settings (detector, series, crisis
-target) are read from the run name.  Columns: one per metric.
+                     SUB_CRISES = True): three rows per run, column period:
+                     full = peak -> recovery, ptt = peak -> trough,
+                     ttp = trough -> recovery; every metric over that period
+  windows           the dates of every sheet and the benchmark used
+Rows: one per run and frequency (and period).  The run settings (detector,
+series, crisis target) are read from the run name.  Columns: one per metric.
 
 Metrics: cumulative and annual return, volatility, Sharpe, Sortino, maximum
 drawdown, longest time under water (trading days), Calmar, Ulcer index,
-historical VaR / CVaR (daily, TAIL_LEVEL), beta and downside capture against
-the benchmark, share of days in the crisis portfolio; on the overall sheet
+historical VaR / CVaR (daily, TAIL_LEVEL), beta, Jensen's alpha and downside
+capture against the benchmark, share of days in the crisis portfolio.
+Against the benchmark over the same period (positive = better):
+ann_return_improve and sharpe_improve (run - benchmark), dd_reduction
+(max_dd - benchmark max_dd, i.e. shallower drawdown), beta_improve
+(benchmark beta (1) - beta), alpha_improve (alpha - benchmark alpha (0)); the
+*_relative columns divide by |benchmark value|.  On the overall sheet
 also annual turnover and the Ledoit-Wolf (2008) Sharpe test against the
 benchmark (d_sharpe_bench, p_bench) and, for regime runs and the always-min-var
 control, against the same model's baseline at the same frequency
@@ -45,6 +49,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / '_metrics'))
 from config import OUTPUT_ROOT, TRADING_DAYS_PER_YEAR
 from crises import overall, main_crises, sub_crises
 from metrics import (
+    alpha,
     annualized_return,
     annualized_volatility,
     beta,
@@ -60,7 +65,6 @@ from metrics import (
     value_at_risk,
 )
 from compare_runs import CRISIS_NAMES, sharpe_test
-from risk_free_rate import rf_period
 
 # ----
 # Variables
@@ -87,26 +91,20 @@ DETECTORS = ('changepoint', 'hmm', 'wasserstein')
 SERIES    = ('gspc_vix', 'gspc', 'vix')
 TARGETS   = ('min_var', 'cash', 'hrp')
 
-# Sheet vs_base: every regime run (and the always-min-var control) against the
-# same model's baseline at the same frequency, full period.  For each metric
-# the difference run - baseline (d_<metric>) and a two-sided p-value
-# (p_<metric>).  Sharpe: Ledoit-Wolf (2008) HAC test, as p_base.  All other
-# metrics: paired stationary block bootstrap (Politis & Romano 1994): the
-# trading days of run, baseline, benchmark and risk-free rate are resampled
-# together in blocks of random length (mean BOOT_BLOCK days), and
-# p = share of bootstrap differences at least as far from the observed one as
-# the observed one is from 0.  Takes a few seconds per run.
-BASE_TESTS   = True
-BASE_METRICS = ['sharpe', 'ann_return', 'ann_vol', 'cum_return', 'max_dd', 'dd_days',
-                'calmar', 'ulcer', 'var_95', 'cvar_95', 'beta']
-BOOT_REPS    = 1000                  # bootstrap samples
-BOOT_BLOCK   = 63                    # mean block length in trading days (~ one quarter)
-BOOT_SEED    = 0                     # same seed for every run: same resampled days
-BOOT_CHUNK   = 100                   # samples per batch (memory)
+KEY_COLS = ['period', 'model', 'frequency', 'detector', 'series', 'crisis_target', 'run']
 
-PCT_COLS = ['cum_return', 'ptt_return', 'ann_return', 'ann_vol', 'max_dd',
-            'var_95', 'cvar_95', 'crisis_share']
-PCT_COLS += ['d_' + c for c in PCT_COLS]
+# Metric column order (columns not listed come after, in the order computed)
+METRIC_ORDER = ['days', 'cum_return',
+                'ann_return', 'ann_return_improve', 'ann_return_improve_relative', 'ann_vol',
+                'sharpe', 'sharpe_improve', 'sharpe_improve_relative', 'sortino',
+                'max_dd', 'dd_reduction', 'dd_reduction_relative', 'dd_days',
+                'calmar', 'ulcer', 'var_95', 'cvar_95',
+                'beta', 'beta_improve', 'beta_improve_relative', 'alpha', 'alpha_improve',
+                'down_capture', 'crisis_share']
+
+PCT_COLS = ['cum_return', 'ann_return', 'ann_return_improve', 'ann_return_improve_relative',
+            'ann_vol', 'sharpe_improve_relative', 'max_dd', 'dd_reduction', 'dd_reduction_relative',
+            'beta_improve_relative', 'alpha', 'alpha_improve', 'var_95', 'cvar_95', 'crisis_share']
 
 
 # ----
@@ -161,7 +159,7 @@ def find_runs() -> list[dict]:
             info['crisis'] = crisis
             if info['frequency'] is not None:
                 runs.append(info)
-            else:                            # no rebalancing: one reference row per frequency
+            else:
                 runs += [{**info, 'frequency': f} for f in FREQ_ORDER]
     return runs
 
@@ -223,15 +221,23 @@ def _crisis_share(crisis: pd.Series | None, idx: pd.DatetimeIndex) -> float:
     return float(crisis.reindex(idx, method='ffill').fillna(0.0).mean())
 
 
+def _improve(out: dict, name: str, diff: float, bench_value: float, relative: bool = True) -> None:
+    '''<name> = diff (positive = better than the benchmark) and
+    <name>_relative = diff / |benchmark value|.'''
+    out[name] = diff
+    if relative:
+        out[name + '_relative'] = diff / abs(bench_value) if bench_value != 0 else np.nan
+
+
 def window_metrics(run: dict, start, end, bench: pd.Series | None,
-                   trough=None, full: bool = False) -> dict:
+                   full: bool = False) -> dict:
+    '''Metrics of the returns in (start, end].  full: the overall sheet
+    (adds turnover and the Sharpe tests).'''
     r = _slice(run['returns'], start, end)
     out = {'days': len(r)}
     if len(r) < 2:
         return out
     lvl = _level(r)
-    if trough is not None:
-        out['ptt_return'] = cumulative_return(_slice(run['returns'], start, trough))
     out.update({
         'cum_return':   cumulative_return(r),
         'ann_return':   annualized_return(r),
@@ -249,7 +255,19 @@ def window_metrics(run: dict, start, end, bench: pd.Series | None,
     if bench is not None:
         b = _slice(bench, start, end)
         out['beta'] = beta(r, b)
+        out['alpha'] = alpha(r, b)
         out['down_capture'] = downside_capture(r, b)
+        if len(b) >= 2:
+            b_ann, b_sharpe = annualized_return(b), sharpe_ratio(b)
+            b_dd, b_beta, b_alpha = maximum_drawdown(_level(b)), beta(b, b), alpha(b, b)
+            _improve(out, 'ann_return_improve', out['ann_return'] - b_ann, b_ann)
+            _improve(out, 'sharpe_improve', out['sharpe'] - b_sharpe, b_sharpe)
+            # max_dd is negative: positive = shallower drawdown than the benchmark
+            _improve(out, 'dd_reduction', out['max_dd'] - b_dd, b_dd)
+            # lower beta = less market exposure = positive
+            _improve(out, 'beta_improve', b_beta - out['beta'], b_beta)
+            # the benchmark's alpha against itself is 0: no relative column
+            _improve(out, 'alpha_improve', out['alpha'] - b_alpha, b_alpha, relative=False)
     if full:
         to = run['turnover']
         if to is not None and len(to) > 1:
@@ -261,117 +279,6 @@ def window_metrics(run: dict, start, end, bench: pd.Series | None,
         if base is not None:
             out['d_sharpe_base'], out['p_base'] = sharpe_test(r, _slice(base['returns'], start, end))
     return out
-
-
-# ----
-# Tests against the baseline (sheet vs_base)
-# ----
-
-def _stationary_index(n: int, reps: int, rng) -> np.ndarray:
-    '''
-    reps x n day indices of the stationary bootstrap: each day starts a new
-    block (at a random day) with probability 1 / BOOT_BLOCK, otherwise it
-    takes the day after the previous one (wrapping around at the end).
-    '''
-    pos = np.arange(n)[None, :]
-    new = rng.random((reps, n)) < 1.0 / BOOT_BLOCK
-    new[:, 0] = True
-    start = rng.integers(0, n, size=(reps, n))
-    last = np.maximum.accumulate(np.where(new, pos, 0), axis=1)     # where the block began
-    return (np.take_along_axis(start, last, axis=1) + pos - last) % n
-
-
-def _row_metrics(R: np.ndarray, X: np.ndarray, B: np.ndarray | None) -> dict:
-    '''
-    The metrics of BASE_METRICS for every row of R (daily log returns),
-    vectorised; same definitions as metrics.py.  X: excess log returns,
-    B: benchmark log returns (None: no beta).
-    '''
-    k, n = R.shape
-    ann = TRADING_DAYS_PER_YEAR
-    lvl = np.exp(np.concatenate([np.zeros((k, 1)), np.cumsum(R, axis=1)], axis=1))
-    peak = np.maximum.accumulate(lvl, axis=1)
-    dd = lvl / peak - 1.0
-    under = lvl < peak
-    c = np.cumsum(under, axis=1)
-    run_len = c - np.maximum.accumulate(np.where(under, 0, c), axis=1)
-    S = np.expm1(R)
-    var = np.quantile(S, 1.0 - TAIL_LEVEL, axis=1)
-    tail = S <= var[:, None]
-    with np.errstate(divide='ignore', invalid='ignore'):
-        out = {
-            'sharpe':     X.mean(axis=1) * ann / (X.std(axis=1, ddof=1) * np.sqrt(ann)),
-            'ann_return': np.expm1(R.mean(axis=1) * ann),
-            'ann_vol':    R.std(axis=1, ddof=1) * np.sqrt(ann),
-            'cum_return': np.expm1(R.sum(axis=1)),
-            'max_dd':     dd.min(axis=1),
-            'dd_days':    run_len.max(axis=1).astype(float),
-            'ulcer':      np.sqrt((dd ** 2).mean(axis=1)),
-            'var_95':     var,
-            'cvar_95':    (S * tail).sum(axis=1) / tail.sum(axis=1),
-        }
-        out['calmar'] = np.where(out['max_dd'] != 0, out['ann_return'] / np.abs(out['max_dd']), np.nan)
-        if B is not None:
-            Rc = R - R.mean(axis=1, keepdims=True)
-            Bc = B - B.mean(axis=1, keepdims=True)
-            out['beta'] = (Rc * Bc).sum(axis=1) / (Bc ** 2).sum(axis=1)
-    return out
-
-
-def base_tests(run: dict, bench: pd.Series | None, start, end) -> dict:
-    '''d_<metric> = run - baseline and p_<metric> for every metric of BASE_METRICS.'''
-    parts = [_slice(run['returns'], start, end), _slice(run['base']['returns'], start, end)]
-    if bench is not None:
-        parts.append(_slice(bench, start, end))
-    df = pd.concat(parts, axis=1, join='inner').dropna()
-    n = len(df)
-    if n < 2 * BOOT_BLOCK:
-        return {}
-    a = df.to_numpy().T
-    rf = rf_period(df.index, 'D').reindex(df.index).to_numpy()
-    b = a[2] if bench is not None else None
-
-    def diff(idx):
-        R1, R2, F = a[0][idx], a[1][idx], rf[idx]
-        B = b[idx] if b is not None else None
-        m1, m2 = _row_metrics(R1, R1 - F, B), _row_metrics(R2, R2 - F, B)
-        return {m: m1[m] - m2[m] for m in m1}
-
-    obs = {m: float(v[0]) for m, v in diff(np.arange(n)[None, :]).items()}
-    rng = np.random.default_rng(BOOT_SEED)
-    hits = {m: 0 for m in obs}
-    done = 0
-    while done < BOOT_REPS:
-        k = min(BOOT_CHUNK, BOOT_REPS - done)
-        with np.errstate(invalid='ignore'):
-            for m, d in diff(_stationary_index(n, k, rng)).items():
-                hits[m] += int((np.abs(d - obs[m]) >= abs(obs[m])).sum())
-        done += k
-
-    out = {}
-    for m in BASE_METRICS:
-        if m not in obs:
-            continue
-        out['d_' + m] = obs[m]
-        out['p_' + m] = (hits[m] + 1) / (BOOT_REPS + 1) if np.isfinite(obs[m]) else np.nan
-    out['d_sharpe'], out['p_sharpe'] = sharpe_test(df.iloc[:, 0], df.iloc[:, 1])
-    return out
-
-
-def base_table(runs: list[dict], benches: dict) -> pd.DataFrame:
-    keys = ['model', 'frequency', 'detector', 'series', 'crisis_target', 'run']
-    w = overall[0]
-    todo = [r for r in runs if r.get('base') is not None]
-    rows = []
-    for i, run in enumerate(todo, 1):
-        b = benches.get(run['frequency'])
-        row = {k: run[k] for k in keys}
-        row['baseline'] = run['base']['run']
-        row.update(base_tests(run, b['returns'] if b is not None else None, w['peak'], w['even']))
-        rows.append(row)
-        print(f'\r[compare_all] vs_base {i}/{len(todo)}', end='', flush=True)
-    print()
-    return pd.DataFrame(rows)
 
 
 # ----
@@ -392,7 +299,6 @@ def build_tables(runs: list[dict]) -> tuple[dict, pd.DataFrame]:
         b = benches.get(run['frequency'])
         run['is_bench'] = b is run
     runs = sorted(runs, key=_sort_key)
-    keys = ['model', 'frequency', 'detector', 'series', 'crisis_target', 'run']
 
     windows = [('overall', overall[0], True)]
     crises = list(main_crises) + (list(sub_crises) if SUB_CRISES else [])
@@ -400,24 +306,30 @@ def build_tables(runs: list[dict]) -> tuple[dict, pd.DataFrame]:
 
     sheets, info = {}, []
     for title, w, full in windows:
+        # crisis sheets: full = peak -> recovery, ptt = peak -> trough,
+        # ttp = trough -> recovery; every metric over that period
+        periods = [('full', w['peak'], w['even'])]
+        if not full:
+            periods += [('ptt', w['peak'], w['trough']), ('ttp', w['trough'], w['even'])]
         rows = []
         for run in runs:
             b = benches.get(run['frequency'])
-            row = {k: run[k] for k in keys}
-            row.update(window_metrics(run, w['peak'], w['even'],
-                                      b['returns'] if b is not None else None,
-                                      trough=None if full else w['trough'], full=full))
-            rows.append(row)
-        sheets[title[:31]] = pd.DataFrame(rows)
+            for period, start, end in periods:
+                row = {'period': period, **{k: run[k] for k in KEY_COLS[1:]}}
+                row.update(window_metrics(run, start, end,
+                                          b['returns'] if b is not None else None, full=full))
+                rows.append(row)
+        df = pd.DataFrame(rows)
+        order = KEY_COLS + [c for c in METRIC_ORDER if c in df.columns]
+        sheets[title[:31]] = df[order + [c for c in df.columns if c not in order]]
         info.append({'sheet': title[:31], 'label': w['label'], 'peak / start': w['peak'],
                      'trough': '' if full else w['trough'], 'recovery / end': w['even']})
-        if full and BASE_TESTS:
-            sheets['vs_base'] = base_table(runs, benches)
     bench_names = {f: BENCH_MODEL + '/' + b['run'] for f, b in benches.items()}
     windows_df = pd.DataFrame(info)
     windows_df['note'] = ''
-    windows_df.loc[0, 'note'] = ('returns in (start, end]; crisis sheets: metrics over '
-                                 'peak -> recovery, ptt_return = peak -> trough')
+    windows_df.loc[0, 'note'] = ('returns in (start, end]; crisis sheets, column period: '
+                                 'full = peak -> recovery, ptt = peak -> trough, '
+                                 'ttp = trough -> recovery')
     bench_df = pd.DataFrame({'sheet': ['benchmark ' + f for f in bench_names],
                              'label': list(bench_names.values())})
     return sheets, pd.concat([windows_df, bench_df], ignore_index=True)
@@ -433,7 +345,9 @@ def _write_xlsx(sheets: dict, windows: pd.DataFrame, path: Path) -> None:
         for name, df in {**sheets, 'windows': windows}.items():
             df.to_excel(xw, sheet_name=name, index=False)
             ws = xw.sheets[name]
-            ws.freeze_panes = 'G2' if name != 'windows' else 'A2'
+            ws.freeze_panes = 'H2' if name != 'windows' else 'A2'
+            if name != 'windows':
+                ws.auto_filter.ref = ws.dimensions
             for j, col in enumerate(df.columns, 1):
                 letter = get_column_letter(j)
                 width = max(len(str(col)), *(len(str(v)) for v in df[col].head(200))) if len(df) else len(str(col))

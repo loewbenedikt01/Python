@@ -84,10 +84,10 @@ FREQUENCIES = ['monthly', 'quarterly', 'yearly']     # missing folders are skipp
 CRISIS_NAMES = {                # crises.py labels -> short names for the table
     'crisis_1': 'Dotcom',
     'crisis_2': 'GFC',
-    'crisis_3': '2018 Q4',
-    'crisis_4': 'Covid',
-    'crisis_5': '2022 rates',
-    'crisis_6': '2025 tariffs',
+    'crisis_3': 'MPS',
+    'crisis_4': 'COVID',
+    'crisis_5': 'IaRHC',
+    'crisis_6': 'TPS',
 }
 
 PERIODS_PER_YEAR = 252
