@@ -14,8 +14,9 @@ pure HRP for RF / XGB / LSTM; does switching add anything over holding the
 fallback?) and all its regime runs.  Column role = benchmark / baseline /
 fallback / regime, base_run = the model's baseline.
 
-3. All runs: _output/_comparison/crisis_analysis_all.xlsx, one sheet per
-frequency and window (monthly_overall, monthly_C1, ...): every run of the
+3. All runs: one workbook per frequency,
+_output/_comparison/crisis_analysis_all_<frequency>.xlsx (sheets overall,
+C1 ... C6, timing, detector_avg): every run of the
 frequency (benchmark, all baselines, controls, all regime runs), each
 compared with the benchmark and with its own baseline (base_run).
 
@@ -610,7 +611,7 @@ def run_all(tag: str, prefix: str, build, add_deltas, tests, write) -> None:
     The three outputs of both crisis analyses:
       1. baselines, one workbook per frequency       <prefix>_<frequency>.xlsx
       2. per regime model and frequency (REGIME_DIR) <prefix>_<model>_<frequency>.xlsx
-      3. all runs, one workbook, sheets <frequency>_<sheet>   <prefix>_all.xlsx
+      3. all runs, one workbook per frequency        <prefix>_all_<frequency>.xlsx
     build(group, bench, keys, info) -> sheets; add_deltas(sheets) adds the
     columns against base_run; tests = hit tests; write(sheets, path, n_keys).
     '''
@@ -645,18 +646,16 @@ def run_all(tag: str, prefix: str, build, add_deltas, tests, write) -> None:
         print(f'[{tag}] {model} {freq}: baseline {group[1]["run"]}, {n_fb} fallback, '
               f'{len(group) - 2 - n_fb} regime runs; saved to {path}')
 
-    big, by_freq, timing = {}, {}, []
     for freq, group, info in all_groups(all_runs):
-        by_freq[freq] = regime_sheets(group, info)
-        big.update({f'{freq}_{name}': df for name, df in by_freq[freq].items()})
-        timing.append(timing_table(group, info))
-    big['timing'] = pd.concat(timing, ignore_index=True)
-    big['detector_avg'] = detector_averages(by_freq)
-    if not big['timing']['identical'].all():
-        print(f'[{tag}] timing differs between models of the same detector: see column identical')
-    path = SAVE_DIR / f'{prefix}_all.xlsx'
-    write(big, path, len(REGIME_KEYS))
-    print(f'[{tag}] all runs: {len(big)} sheets; saved to {path}')
+        sheets = regime_sheets(group, info)
+        avg = detector_averages({freq: sheets})
+        sheets['timing'] = timing_table(group, info)
+        sheets['detector_avg'] = avg
+        if not sheets['timing']['identical'].all():
+            print(f'[{tag}] {freq}: timing differs between models of the same detector: see column identical')
+        path = SAVE_DIR / f'{prefix}_all_{freq}.xlsx'
+        write(sheets, path, len(REGIME_KEYS))
+        print(f'[{tag}] all runs {freq}: {len(group)} runs; saved to {path}')
 
 
 def main() -> None:

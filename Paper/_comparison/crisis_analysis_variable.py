@@ -32,8 +32,8 @@ Output (as in crisis_analysis_defined.py, see there for roles and fallbacks)
   1. baselines: _output/_comparison/crisis_analysis_variable_<frequency>.xlsx
   2. per regime model and frequency (benchmark, baseline, fallbacks, regime runs):
      _output/_comparison/crisis_analysis_regime/crisis_analysis_variable_<model>_<frequency>.xlsx
-  3. all runs, sheets <frequency>_<sheet>:
-     _output/_comparison/crisis_analysis_variable_all.xlsx
+  3. all runs, one workbook per frequency:
+     _output/_comparison/crisis_analysis_variable_all_<frequency>.xlsx
   2. and 3. carry all columns of 1., plus on the crisis sheets
        full_d_base_ulcer    full_ulcer_common - base_run (negative = less pain)
        ptt_d_base_depth     ptt_depth - base_run (positive = shallower)
