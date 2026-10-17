@@ -183,7 +183,7 @@ def episode(returns: pd.Series, c: dict, rec_end=None, own_peak: bool = False) -
         'trough_date':            t_date,
         'recovery_date':          rec_date,
         'full_days':              len(own),
-        'full_anchored_dd':       t_val - 1.0,
+        'full_anchored_dd':       min(t_val - 1.0, 0.0),     # never above the start: 0
         'full_hwm_dd':            maximum_drawdown(own_lvl),
         'full_days_underwater':   int((own < 1.0).sum()),
         'full_ulcer':             ulcer_index(own_lvl),
@@ -192,7 +192,7 @@ def episode(returns: pd.Series, c: dict, rec_end=None, own_peak: bool = False) -
         'full_gap_at_cutoff':     float(own.iloc[-1]) - 1.0 if not_rec else np.nan,
         'ptt_days':               ptt_days,
         'ptt_days_vs_defined':    ptt_days - defined_ptt,
-        'ptt_depth':              t_val - 1.0,
+        'ptt_depth':              min(t_val - 1.0, 0.0),
         'ptt_max_dd':             maximum_drawdown(_with_anchor(lvl.iloc[:ptt_days])),
         'ptt_trough_at_boundary': at_boundary,
         'ttp_days':               ttp_days,
