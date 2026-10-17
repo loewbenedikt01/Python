@@ -35,6 +35,8 @@ Columns (bench = BENCHMARK run of the same frequency, same window)
                         overall sheet only: share of the crises C1 ... C6 in
                         which the excess return of that phase is > 0
                         (empty for the benchmark)
+  hit_count_full, hit_count_ptt, hit_count_ttp
+                        the same as hits / crises, e.g. 4/6
   ptt_cum_return        cumulative return peak -> trough
   ptt_excess_return     relative excess return peak -> trough
   ptt_down_capture      ptt_cum_return / bench ptt_cum_return (< 1 = lost less)
@@ -172,18 +174,22 @@ def add_hit_rates(sheets: dict, tests: dict) -> None:
     '''
     hit_rate_<phase> on the overall sheet: share of the crisis sheets in which
     the run beats the benchmark, test(row, bench_row) -> True / False, or NaN
-    when not comparable (left out of the share).  Empty for the benchmark.
+    when not comparable (left out of the share); hit_count_<phase> = the same
+    as "hits/comparable crises", e.g. 2/5.  Empty for the benchmark.
     '''
     crises = [df for name, df in sheets.items() if name != 'overall']
     ov = sheets['overall']
+    is_bench = ov['model'] == BENCHMARK
     for phase, test in tests.items():
         hits = []
         for df in crises:
             b = df[df['model'] == BENCHMARK].iloc[0]
             h = df.apply(lambda row: test(row, b), axis=1)
             hits.append(pd.to_numeric(h, errors='coerce').set_axis(df['run']))
-        rate = pd.concat(hits, axis=1).mean(axis=1)
-        ov[f'hit_rate_{phase}'] = ov['run'].map(rate).where(ov['model'] != BENCHMARK)
+        h = pd.concat(hits, axis=1)
+        count = h.sum(axis=1).astype(int).astype(str) + '/' + h.notna().sum(axis=1).astype(str)
+        ov[f'hit_rate_{phase}'] = ov['run'].map(h.mean(axis=1)).where(~is_bench)
+        ov[f'hit_count_{phase}'] = ov['run'].map(count).where(~is_bench)
 
 
 # Beats the benchmark: higher return than the benchmark over the phase

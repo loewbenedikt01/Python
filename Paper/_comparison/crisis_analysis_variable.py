@@ -21,8 +21,10 @@ Not recovered = censored: full_days, full_days_underwater and ttp_days are then
 counted up to the recovery search end and mean "at least this many days".
 Sheet overall: anchoring at the 1998 start would only catch an early dip, so
 the start is the portfolio's own high-water mark before its deepest drawdown
-of the full period, searched to the end of the data (ptt_days_vs_defined left
-empty).
+of the full period, searched to the end of the data.  These episodes differ
+between portfolios (mcap: dot-com peak 2000 -> GFC trough 2009, most others:
+GFC only), so ptt_days_vs_defined and the benchmark columns stay empty there;
+the overall sheet carries the hit rates over C1 ... C6 instead.
 
 Output: _output/_comparison/crisis_analysis_variable_<frequency>.xlsx
 Rows: one per portfolio (model, run, frequency).  Days = trading days.
@@ -36,10 +38,22 @@ Columns (bench = BENCHMARK run of the same frequency)
                           (can be deeper than anchored if the portfolio rose first)
   full_days_underwater    days below the anchor (start value) in the own window
   full_ulcer              Ulcer index over the own window, drawdowns from the
-                          running high (standard definition, metrics.ulcer_index)
+                          running high (standard definition, metrics.ulcer_index);
+                          own windows differ in length, so a longer recovery
+                          can lower it: not used for comparisons
+  full_ulcer_common       Ulcer index over the common horizon of the crisis:
+                          defined start -> full_common_end = the latest own
+                          window end of any portfolio (recovery date, or the
+                          cut-off if one is censored); drawdowns from the
+                          running high until the own recovery, 0 after.  Same
+                          number of days for every portfolio, so a longer
+                          recovery raises it.  Crisis sheets only.
+  full_common_end         end of that common horizon
   full_no_drawdown        True if the lowest value stays above 1 - NO_DD_TOL
   full_not_recovered      True if not back at the anchor by the recovery
                           search end (day counts censored)
+  full_gap_at_cutoff      not recovered only: value at the recovery search end
+                          / anchor - 1 (how far below the start it still was)
   ptt_days                start -> own trough
   ptt_days_vs_defined     ptt_days - days from start to the defined trough
                           (negative = bottomed earlier)
@@ -55,10 +69,12 @@ Columns (bench = BENCHMARK run of the same frequency)
   hit_rate_full, hit_rate_ptt, hit_rate_ttp
                           overall sheet only: share of the crises C1 ... C6 in
                           which the portfolio beats the benchmark (empty for
-                          the benchmark).  full: back at the start value in
-                          fewer days; ptt: shallower ptt_depth; ttp: fewer
-                          ttp_days.  Recovered beats not recovered; both not
-                          recovered = crisis left out of the share.
+                          the benchmark).  full: lower full_ulcer_common; ptt:
+                          shallower ptt_depth; ttp: fewer ttp_days (recovered
+                          beats not recovered; both not recovered = crisis
+                          left out of the share)
+  hit_count_full, hit_count_ptt, hit_count_ttp
+                          the same as hits / comparable crises, e.g. 2/5
 
 Usage: run the file.
 '''
@@ -81,9 +97,10 @@ from crisis_analysis_defined import (
 TROUGH_BUFFER_MONTHS = 6       # trough search past the defined recovery date
 NO_DD_TOL            = 0.01    # lowest value above 1 - NO_DD_TOL = no drawdown
 
-PCT_COLS  = ['full_anchored_dd', 'full_hwm_dd', 'full_ulcer', 'ptt_depth', 'ptt_max_dd',
+PCT_COLS  = ['full_anchored_dd', 'full_hwm_dd', 'full_ulcer', 'full_ulcer_common', 'full_gap_at_cutoff',
+             'ptt_depth', 'ptt_max_dd',
              'ttp_return_to_even', 'hit_rate_full', 'hit_rate_ptt', 'hit_rate_ttp']
-DATE_COLS = ['peak_date', 'trough_date', 'recovery_date']
+DATE_COLS = ['peak_date', 'trough_date', 'recovery_date', 'full_common_end']
 
 
 # ----
@@ -137,7 +154,12 @@ def episode(returns: pd.Series, c: dict, rec_end=None, own_peak: bool = False) -
         ttp_days = len(own) - ptt_days                # lower bound if not recovered
 
     own_lvl = _with_anchor(own)
+    # drawdowns from the running high over the own window (0 after recovery,
+    # see common_ulcer); none for no drawdown
+    dd = (own_lvl / own_lvl.cummax() - 1.0).iloc[1:].set_axis(own.index)
     return {
+        '_dd':                    dd if not no_dd else pd.Series(dtype=float),
+        '_end':                   own.index[-1],
         'peak_date':              peak_date,
         'trough_date':            t_date,
         'recovery_date':          rec_date,
@@ -148,6 +170,7 @@ def episode(returns: pd.Series, c: dict, rec_end=None, own_peak: bool = False) -
         'full_ulcer':             ulcer_index(own_lvl),
         'full_no_drawdown':       no_dd,
         'full_not_recovered':     not_rec,
+        'full_gap_at_cutoff':     float(own.iloc[-1]) - 1.0 if not_rec else np.nan,
         'ptt_days':               ptt_days,
         'ptt_days_vs_defined':    ptt_days - defined_ptt,
         'ptt_depth':              t_val - 1.0,
@@ -156,6 +179,18 @@ def episode(returns: pd.Series, c: dict, rec_end=None, own_peak: bool = False) -
         'ttp_days':               ttp_days,
         'ttp_return_to_even':     0.0 if no_dd else 1.0 / t_val - 1.0,
     }
+
+
+def common_ulcer(returns: pd.Series, ep: dict, start, end) -> float:
+    '''
+    Ulcer index over the common horizon (start, end] of a crisis: the
+    portfolio's drawdowns from the running high until its own recovery, 0
+    after it, so every portfolio has the same number of days and a longer
+    recovery raises the value.
+    '''
+    days = returns.index[(returns.index > pd.Timestamp(start)) & (returns.index <= end)]
+    dd = ep['_dd'].reindex(days).fillna(0.0).to_numpy()
+    return float(np.sqrt(np.mean(np.concatenate([[0.0], dd]) ** 2)))
 
 
 def _faster(r, b, days: str) -> float:
@@ -172,10 +207,11 @@ def _faster(r, b, days: str) -> float:
     return float(r[days] < b[days])
 
 
-# Beats the benchmark: full = back at the start value in fewer days,
-# ptt = shallower drop to the own trough, ttp = faster recovery from the trough
+# Beats the benchmark: full = lower Ulcer index over the common horizon (less
+# pain from depth and duration combined), ptt = shallower drop to the own
+# trough, ttp = faster recovery from the trough
 HIT_TESTS = {
-    'full': lambda r, b: _faster(r, b, 'full_days'),
+    'full': lambda r, b: float(r['full_ulcer_common'] < b['full_ulcer_common']),
     'ptt':  lambda r, b: float(r['ptt_depth'] > b['ptt_depth']),
     'ttp':  lambda r, b: _faster(r, b, 'ttp_days'),
 }
@@ -227,16 +263,28 @@ def main() -> None:
             continue
         sheets = {}
         for name, c, rec_end, own_peak in windows:
-            b = episode(bench['returns'], c, rec_end, own_peak)
+            eps = [episode(run['returns'], c, rec_end, own_peak) for run in group]
+            b = eps[group.index(bench)]
+            # common horizon: latest own window end (recovery or cut-off) of any portfolio
+            horizon = max((e['_end'] for e in eps if e), default=None)
             rows = []
-            for run in group:
-                row = {**{k: run[k] for k in KEY_COLS}, **episode(run['returns'], c, rec_end, own_peak)}
-                vs_bench(row, b)
-                rows.append(row)
+            for run, ep in zip(group, eps):
+                row = {**{k: run[k] for k in KEY_COLS}, **ep}
+                if ep and not own_peak:
+                    row['full_ulcer_common'] = common_ulcer(run['returns'], ep, c['peak'], horizon)
+                    row['full_common_end'] = horizon
+                if not own_peak:
+                    vs_bench(row, b)
+                else:                     # overall: own episodes differ, no comparison
+                    row.update({'ttp_days_vs_bench': np.nan, 'ttp_vs_bench_censored': None})
+                rows.append({k: v for k, v in row.items() if not k.startswith('_')})
             df = pd.DataFrame(rows)
             for col in ('ttp_vs_bench_censored', 'ttp_days_vs_bench'):   # next to ttp_days
                 if col in df:
                     df.insert(df.columns.get_loc('ttp_days') + 1, col, df.pop(col))
+            for col in ('full_common_end', 'full_ulcer_common'):         # next to full_ulcer
+                if col in df:
+                    df.insert(df.columns.get_loc('full_ulcer') + 1, col, df.pop(col))
             sheets[name] = df
         add_hit_rates(sheets, HIT_TESTS)
         path = SAVE_DIR / f'crisis_analysis_variable_{freq}.xlsx'
