@@ -34,7 +34,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import compare_all as ca
 import crisis_analysis_defined as cad
+from crises import overall, main_crises
+from metrics import annualized_return, sharpe_ratio
 
 
 # ----
@@ -80,8 +83,12 @@ OVERALL_METRICS = (
     [(c, 'fix', c, 'full fix', k) for c, k in [
         ('full_cum_return', 'ret'), ('full_cagr', 'diff_pct'), ('full_ann_vol', 'diff_pct'),
         ('full_sharpe', 'diff'), ('full_sortino', 'diff'), ('full_calmar', 'diff'),
-        ('full_max_dd', 'dd'), ('full_ulcer', 'ulcer'), ('full_turnover_pa', 'diff_pct'),
-        ('normal_ret_ann', 'diff_pct'), ('total_defensive_share', 'diff_pct')]]
+        ('full_max_dd', 'dd'), ('full_ulcer', 'ulcer'), ('full_turnover_pa', 'diff_pct')]]
+    # computed here from the runs (not in the crisis workbooks), see calc_overall
+    + [('ret_outside_crises_ann', 'calc', None, 'outside crises', 'diff_pct'),
+       ('sharpe_outside_crises',  'calc', None, 'outside crises', 'diff'),
+       ('sharpe_inside_crises',   'calc', None, 'outside crises', 'diff'),
+       ('time_defensive_share',   'calc', None, 'outside crises', 'keep_pct')]
     + [(f'worst_{c}', 'flex', c, 'worst episode (flex)', k) for c, k in [
         ('peak_date', 'keep'), ('trough_date', 'keep'), ('recovery_date', 'keep'),
         ('full_anchored_dd', 'dd'), ('full_days', 'days'), ('full_not_recovered', 'bool')]]
@@ -90,9 +97,10 @@ OVERALL_METRICS = (
 )
 
 GROUP_FILL = {'full fix': 'DDEBF7', 'full flex': 'E2EFDA', 'ptt': 'E4DFEC', 'ttp': 'EDEDED',
-              'worst episode (flex)': 'E2EFDA', 'hit counts vs mcap': 'FFF2CC'}
+              'outside crises': 'DDEBF7', 'worst episode (flex)': 'E2EFDA',
+              'hit counts vs mcap': 'FFF2CC'}
 CENSOR_FILL = 'F8CBAD'
-PCT_KINDS = {'ret', 'dd', 'ulcer', 'diff', 'diff_pct'}
+PCT_KINDS = {'ret', 'dd', 'ulcer', 'diff', 'diff_pct', 'keep_pct'}
 
 
 # ----
@@ -200,13 +208,48 @@ def crisis_vs_mcap(raw: pd.DataFrame, src: dict) -> pd.DataFrame:
 # Overall sheets
 # ----
 
-def overall_raw(srcs: dict) -> tuple[pd.DataFrame, list[str]]:
+def calc_overall(out: pd.DataFrame, runs: dict) -> dict:
+    '''
+    Columns computed from the runs, over the overall window (1998 .. 2025):
+      ret_outside_crises_ann  annualised return (metrics.annualized_return) on
+                              the trading days outside every main crisis
+                              window (S&P peak, break-even]
+      sharpe_outside_crises   annualised Sharpe ratio (metrics.sharpe_ratio,
+      sharpe_inside_crises    same risk-free rate) of the pooled daily returns
+                              outside / inside the main crisis windows
+      time_defensive_share    regime runs: share of trading days in the
+                              crisis portfolio (crisis_analysis_defined.defensive:
+                              decided on rebalancing dates, effective the next
+                              day); empty for runs without a detector
+    '''
+    w = overall[0]
+    ret_out, sr_out, sr_in, defn = [], [], [], []
+    for run, freq, role in zip(out['run'], out['frequency'], out['role']):
+        r = runs[(run, freq)]
+        ret = ca._slice(r['returns'], w['peak'], w['even'])
+        inside = np.zeros(len(ret), dtype=bool)
+        for c in main_crises:
+            inside |= (ret.index > pd.Timestamp(c['peak'])) & (ret.index <= pd.Timestamp(c['even']))
+        ret_out.append(annualized_return(ret[~inside]))
+        sr_out.append(sharpe_ratio(ret[~inside]))
+        sr_in.append(sharpe_ratio(ret[inside]))
+        d = cad.defensive(r) if role == 'regime' else None
+        defn.append(float(d.reindex(ret.index, fill_value=False).mean()) if d is not None else np.nan)
+    return {'ret_outside_crises_ann': ret_out, 'sharpe_outside_crises': sr_out,
+            'sharpe_inside_crises': sr_in, 'time_defensive_share': defn}
+
+
+def overall_raw(srcs: dict, runs: dict) -> tuple[pd.DataFrame, list[str]]:
     '''(overall sheet with all frequencies, skipped columns).'''
     parts, skipped = [], set()
     for freq in FREQS:
         src = srcs[freq]
         out = ids(src['fix']['overall'])
+        calc = calc_overall(out, runs)
         for name, f, col, _, kind in OVERALL_METRICS:
+            if f == 'calc':
+                out[name] = calc[name]
+                continue
             tab = src[f]['overall'].set_index('run')
             if col not in tab:
                 skipped.add(f'{f}:{col}')
@@ -271,7 +314,8 @@ def _format(ws, df: pd.DataFrame, cens: pd.DataFrame | None) -> None:
         fill = PatternFill('solid', fgColor=GROUP_FILL[group]) if group in GROUP_FILL else None
         if fill is not None:
             head.fill = fill
-        fmt = ('0.00%' if kind in PCT_KINDS and col not in ('full_sharpe', 'full_sortino', 'full_calmar')
+        is_ratio = any(x in col for x in ('sharpe', 'sortino', 'calmar'))
+        fmt = ('0.00%' if kind in PCT_KINDS and not is_ratio
                else '0' if kind == 'days'
                else 'yyyy-mm-dd' if col.endswith('_date')
                else '0.000' if kind == 'diff' else None)
@@ -311,7 +355,15 @@ NOTES = [
     'days days - days_mcap (negative = faster), empty if either side is censored (days_full_flex and '
     'days_ttp_flex; C{i}_cens_vs_mcap = True); Ulcer ulcer - ulcer_mcap (negative = less pain); '
     'ret_to_even as a difference; booleans unchanged; the mcap row is 0.',
-    'overall_vs_mcap: full_cum_return relative; CAGR, vol, turnover, ratios, drawdown, Ulcer as differences; '
+    'ret_outside_crises_ann (overall): annualised return on the trading days 1998-2025 outside all six '
+    'crisis windows (S&P peak -> break-even); computed from the daily returns of each run.',
+    'sharpe_outside_crises / sharpe_inside_crises (overall): annualised Sharpe ratio (same risk-free rate as '
+    'full_sharpe) of the pooled daily returns outside / inside the six crisis windows (inside: all six '
+    'crises together, S&P peak -> break-even).',
+    'time_defensive_share (overall): share of trading days 1998-2025 in the crisis portfolio, decided on '
+    'the rebalancing dates and effective from the next day; regime runs only.',
+    'overall_vs_mcap: full_cum_return relative; CAGR, vol, turnover, ratios, drawdown, Ulcer and '
+    'ret_outside_crises_ann as differences; time_defensive_share unchanged; '
     'worst-episode days as a difference (empty if either is not recovered); dates and hit counts unchanged.',
     'Hit counts (overall): crises won against mcap, "wins/comparable crises" (fix: higher return in the '
     'phase; flex: full = lower common Ulcer, ptt = shallower trough, ttp = faster recovery).',
@@ -349,7 +401,8 @@ def main() -> None:
         raw, mask = crisis_raw(srcs[f])
         sheets[f'{f}_crises'], cens[f'{f}_crises'] = raw, mask
         vs[f'{f}_crises_vs_mcap'] = crisis_vs_mcap(raw, srcs[f])
-    ov, skipped = overall_raw(srcs)
+    runs = {(r['run'], r['frequency']): r for r in ca.find_runs()}
+    ov, skipped = overall_raw(srcs, runs)
     sheets['overall'] = ov
     sheets.update(vs)
     sheets['overall_vs_mcap'] = overall_vs_mcap(ov)
