@@ -1,0 +1,8 @@
+model,family,avg_crisis_excess_return_ptt_fix,avg_crisis_excess_return_ttp_fix,label_pos
+MCap (benchmark),benchmark,0,0,north
+Equal Weight,simple,0.0296,-0.0017,east
+MVO,classical,0.0134,-0.0039,south
+HRP,classical,0.1241,-0.0426,north
+XGB,ml,-0.0062,0.0414,east
+RF,ml,-0.0129,0.0507,west
+LSTM,ml,-0.0085,0.0539,east

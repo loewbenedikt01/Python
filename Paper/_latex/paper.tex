@@ -9,6 +9,8 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepgfplotslibrary{dateplot}
+\usepackage{pgfplotstable}
+\usepackage{booktabs}
 
 \usepackage[left=3cm, right=3cm, top=3cm, bottom=3cm]{geometry}
 
@@ -27,6 +29,21 @@
 \newcommand{\lstmchangepointhrpvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_hrp_monthly_monthly_value.csv}
 \newcommand{\lstmhmmvaluefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_monthly_value.csv}
 \newcommand{\lstmwassersteinvaluefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_monthly_value.csv}
+\newcommand{\scatterfile}{data/scatterplot.txt}
+\newcommand{\tableonefile}{data/table_1.txt}
+\newcommand{\tabletwofile}{data/table_2.txt}
+\newcommand{\tablethreefile}{data/table_3.txt}
+\newcommand{\tablefourfile}{data/table_4.txt}
+
+% Model family colours (Okabe-Ito, colour-blind safe); use the same in all charts
+\definecolor{famBenchmark}{RGB}{110,110,110}   % market_cap
+\definecolor{famSimple}{RGB}{230,159,0}        % equal_weight, mvo
+\definecolor{famClassical}{RGB}{0,158,115}          % hrp
+\definecolor{famML}{RGB}{0,114,178}            % xgb, rf, lstm
+% Label anchor opposite to the side the label should sit on (label_pos = west -> anchor east)
+\pgfkeys{/labelanchor/.cd, west/.initial=east, east/.initial=west,
+         north/.initial=south, south/.initial=north}
+\newcommand{\labelanchor}[1]{\pgfkeysvalueof{/labelanchor/#1}}
 
 % Time-series line chart 1998-2025, shared by all figures
 \pgfplotsset{timechart/.style={
@@ -384,7 +401,121 @@ Methodology and calculation 1:1 to the paper
 \end{figure}
 
 
+\subsection{Detection Quality}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Crisis detection quality of the regime detectors by evaluation frequency. Defensive: share of days in the crisis state; Episodes: number of crisis-state episodes; Avg.\ ep.: mean length of an episode in trading days; Recall: share of crisis days flagged; Precision: share of flagged days that are crisis days; Lift: precision relative to the share of crisis days in the sample; False alarms: flagged days outside crises; Missed: crises (of six) never flagged.}
+    \label{tab:detection}
+    \vspace{4pt}
+    % shares stored as decimals: shown in %; the frequency column is not shown,
+    % it is a header row above each block of three detectors (rows 0, 3, 6, 9)
+    \small
+    \setlength{\tabcolsep}{3pt}
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={detector,time_defensive,n_episodes,mean_episode_days,recall,precision,lift,false_alarm_days,missed_crises},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        every row no 0/.style={before row={\multicolumn{9}{l}{\textit{Daily}}\\}},
+        every row no 3/.style={before row={\midrule\multicolumn{9}{l}{\textit{Monthly}}\\}},
+        every row no 6/.style={before row={\midrule\multicolumn{9}{l}{\textit{Quarterly}}\\}},
+        every row no 9/.style={before row={\midrule\multicolumn{9}{l}{\textit{Yearly}}\\}},
+        fixed, fixed zerofill,
+        columns/detector/.style={string type, column name=Detector, column type=l,
+            string replace={changepoint}{Changepoint}, string replace={hmm}{HMM},
+            string replace={wasserstein}{Wasserstein}},
+        columns/time_defensive/.style={column name={\begin{tabular}{@{}c@{}}Defensive\\(\%)\end{tabular}}, multiply by=100, precision=2},
+        columns/n_episodes/.style={column name=Episodes, precision=0},
+        columns/mean_episode_days/.style={column name={\begin{tabular}{@{}c@{}}Avg.\ ep.\\(days)\end{tabular}}, precision=0},
+        columns/recall/.style={column name={\begin{tabular}{@{}c@{}}Recall\\(\%)\end{tabular}}, multiply by=100, precision=2},
+        columns/precision/.style={column name={\begin{tabular}{@{}c@{}}Precision\\(\%)\end{tabular}}, multiply by=100, precision=2},
+        columns/lift/.style={column name=Lift, precision=2},
+        columns/false_alarm_days/.style={column name={\begin{tabular}{@{}c@{}}False alarms\\(days)\end{tabular}}, precision=0},
+        columns/missed_crises/.style={column name=Missed, precision=0},
+    ]{\tablethreefile}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Timing of the regime detectors around the crises, by evaluation frequency. Exit lag: median trading days from the crisis peak until the detector switches to the crisis state (negative = before the peak); Re-entry lag: median trading days until it switches back; Missed: crises not flagged; Late def.: crises flagged only late; Not recovered: crises after which the detector did not leave the crisis state before the next crisis.}
+    \label{tab:timing}
+    \vspace{4pt}
+    % frequency column not shown: header row above each block of three detectors
+    % (rows 0, 3, 6, 9); list cells are wrapped in {} in the file to protect the commas
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={detector,median_exit_lag,median_re_entry_lag,missed,late_def,never_recovered_before_next_crisis},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        every row no 0/.style={before row={\multicolumn{6}{l}{\textit{Daily}}\\}},
+        every row no 3/.style={before row={\midrule\multicolumn{6}{l}{\textit{Monthly}}\\}},
+        every row no 6/.style={before row={\midrule\multicolumn{6}{l}{\textit{Quarterly}}\\}},
+        every row no 9/.style={before row={\midrule\multicolumn{6}{l}{\textit{Yearly}}\\}},
+        empty cells with={--},
+        fixed, precision=1,
+        columns/detector/.style={string type, column name=Detector, column type=l,
+            string replace={changepoint}{Changepoint}, string replace={hmm}{HMM},
+            string replace={wasserstein}{Wasserstein}},
+        columns/median_exit_lag/.style={column name={\begin{tabular}{@{}c@{}}Exit lag\\(days)\end{tabular}}},
+        columns/median_re_entry_lag/.style={column name={\begin{tabular}{@{}c@{}}Re-entry lag\\(days)\end{tabular}}},
+        columns/missed/.style={string type, column name={\begin{tabular}{@{}c@{}}Missed\\(ptt)\end{tabular}}},
+        columns/late_def/.style={string type, column name={\begin{tabular}{@{}c@{}}Late\\(ttp)\end{tabular}}},
+        columns/never_recovered_before_next_crisis/.style={string type, column name={Still defensive}, column type=l},
+    ]{\tablefourfile}
+\end{table}
+
+
 \section{Portfolio Performance}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Full-period performance per model, sorted by Sharpe ratio.}
+    \label{tab:performance}
+    \vspace{4pt}
+    % returns, volatility and drawdown stored as decimals: shown in %
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={model,cagr,volatility,sharpe,max_dd,turnover},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        fixed, fixed zerofill,
+        columns/model/.style={string type, column name=Model, column type=l},
+        columns/cagr/.style={column name={CAGR (\%)}, multiply by=100, precision=2},
+        columns/volatility/.style={column name={Volatility (\%)}, multiply by=100, precision=2},
+        columns/sharpe/.style={column name=Sharpe, precision=3},
+        columns/max_dd/.style={column name={Max.\ DD (\%)}, multiply by=100, precision=2},
+        columns/turnover/.style={column name={\begin{tabular}{@{}c@{}}Turnover\\p.a.\ (\%)\end{tabular}}, multiply by=100, precision=2},
+    ]{\tableonefile}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across six crises (C1--C6). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C1 excluded, as MCap did not recover before the GFC; weights rescaled over C2--C6). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
+    \label{tab:crisis}
+    \vspace{4pt}
+    % excess returns and Ulcer change stored as decimals: shown in %
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={model,ptt_excess,ttp_excess,full_excess,delta_ulcer,delta_recovery_days,hits_ptt,hits_ttp},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        fixed, fixed zerofill,
+        empty cells with={--},
+        columns/model/.style={string type, column name=Model, column type=l},
+        columns/ptt_excess/.style={column name={PTT (\%)}, multiply by=100, precision=2},
+        columns/ttp_excess/.style={column name={TTP (\%)}, multiply by=100, precision=2},
+        columns/full_excess/.style={column name={Full (\%)}, multiply by=100, precision=2},
+        columns/delta_ulcer/.style={column name={$\Delta$ Ulcer (pp)}, multiply by=100, precision=2},
+        columns/delta_recovery_days/.style={column name={$\Delta$ Rec.\ (days)}, precision=0},
+        columns/hits_ptt/.style={string type, column name={Hits PTT}, column type=c},
+        columns/hits_ttp/.style={string type, column name={Hits TTP}, column type=c},
+    ]{\tabletwofile}
+\end{table}
 
 \subsection{LSTM (No Regime)}
 
@@ -468,6 +599,64 @@ Methodology and calculation 1:1 to the paper
     \end{tikzpicture}
     \caption{LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV).}
     \label{fig:nav_lstm_wasserstein}
+\end{figure}
+
+
+\subsection{Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.8\textwidth,
+            axis equal image,      % same scale on both axes: the net line is at 45 degrees
+            xmin=-3, xmax=15, ymin=-6, ymax=7,
+            xtick={-2,0,...,14}, ytick={-6,-4,...,6},
+            xlabel={Excess return vs. MCap, peak -> trough (\%)},
+            ylabel={Excess return vs. MCap, trough -> peak (\%)},
+            grid=major, grid style={gray!20},
+            tick label style={font=\small},
+            table/col sep=comma,
+            % dashed zero lines = benchmark level
+            extra x ticks={0}, extra y ticks={0},
+            extra tick style={grid=major, grid style={gray, dashed}, tick label style={opacity=0}},
+            % legend below the plot, two columns
+            legend style={at={(0.5,-0.17)}, anchor=north, legend columns=2,
+                          font=\footnotesize, draw=gray!50, /tikz/every even column/.append style={column sep=1em}},
+            legend cell align=left,
+        ]
+            % net ~ 0 over the whole crisis: ptt + ttp = 0 (drawn over the visible range x = -3 .. 6)
+            \addplot[forget plot, no marks, black!60, densely dotted, thick, domain=-3:6, samples=2]
+                {-x} node[pos=0.78, sloped, above, font=\footnotesize] {net $\approx 0$};
+            \node[font=\footnotesize, black!60, anchor=south west] at (axis cs:-2.8,-5.8) {net loss};
+            \node[font=\footnotesize, black!60, anchor=north east] at (axis cs:14.8,6.8) {net gain};
+            % points coloured by model family (column family)
+            \addplot[
+                scatter, only marks, mark size=2pt,
+                point meta=explicit symbolic,
+                scatter/classes={
+                    benchmark={mark=*, famBenchmark},
+                    simple={mark=*, famSimple},
+                    classical={mark=*, famClassical},
+                    ml={mark=*, famML}},
+            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
+                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix},
+                    meta=family] {\scatterfile};
+            \legend{Benchmark, {Simple (Equal Weight)}, {Classical (MVO, HRP)}, {ML (XGB, RF, LSTM)}}
+            % model names (separate plot: custom node text switches off the class colours);
+            % label side per point from column label_pos (north / south / east / west)
+            \addplot[
+                forget plot, only marks, mark=none,
+                visualization depends on={value \thisrow{model} \as \modelname},
+                visualization depends on={value \thisrow{label_pos} \as \labelpos},
+                nodes near coords={\expandafter\detokenize\expandafter{\modelname}},
+                nodes near coords style={font=\footnotesize, anchor=\labelanchor{\labelpos}},
+            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
+                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix}] {\scatterfile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Average crisis excess return over the benchmark per model: peak to trough ($x$) vs.\ trough to recovery ($y$). The dotted line marks $x + y = 0$: models above it gain over the whole crisis (peak to recovery), models below lose. The line is approximate, since the two phases compound, $(1+x)(1+y)-1 \ne x+y$, rather than add.}
+    \label{fig:scatter_crisis_excess}
 \end{figure}
 
 

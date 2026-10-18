@@ -50,19 +50,31 @@
 \newlabel{fig:pcrisis_sp_wasserstein}{{6}{8}{}{figure.6}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces LSTM ($t=10$, holdout, rank) without regime overlay: monthly portfolio value (NAV).}}{8}{}\protected@file@percent }
 \newlabel{fig:nav_lstm_base}{{7}{8}{}{figure.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Crisis detection quality of the regime detectors by evaluation frequency. Defensive: share of days in the crisis state; Episodes: number of crisis-state episodes; Avg.\ ep.: mean length of an episode in trading days; Recall: share of crisis days flagged; Precision: share of flagged days that are crisis days; Lift: precision relative to the share of crisis days in the sample; False alarms: flagged days outside crises; Missed: crises (of six) never flagged.}}{9}{}\protected@file@percent }
+\newlabel{tab:detection}{{1}{9}{}{table.1}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV).}}{9}{}\protected@file@percent }
 \newlabel{fig:nav_lstm_changepoint}{{8}{9}{}{figure.8}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and HRP: monthly portfolio value (NAV).}}{9}{}\protected@file@percent }
-\newlabel{fig:nav_lstm_changepoint_hrp}{{9}{9}{}{figure.9}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}Portfolio Performance}{10}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}LSTM (No Regime)}{10}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}LSTM (Changepoint VIX)}{10}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}LSTM (Changepoint VIX, HRP)}{10}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}LSTM (HMM S\&P 500)}{10}{}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV).}}{10}{}\protected@file@percent }
-\newlabel{fig:nav_lstm_hmm}{{10}{10}{}{figure.10}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}LSTM (Wasserstein S\&P 500 and VIX)}{10}{}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV).}}{10}{}\protected@file@percent }
-\newlabel{fig:nav_lstm_wasserstein}{{11}{10}{}{figure.11}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}References}{11}{}\protected@file@percent }
-\gdef \@abspage@last{13}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Timing of the regime detectors around the crises, by evaluation frequency. Exit lag: median trading days from the crisis peak until the detector switches to the crisis state (negative = before the peak); Re-entry lag: median trading days until it switches back; Missed: crises not flagged; Late def.: crises flagged only late; Not recovered: crises after which the detector did not leave the crisis state before the next crisis.}}{10}{}\protected@file@percent }
+\newlabel{tab:timing}{{2}{10}{}{table.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Full-period performance per model, sorted by Sharpe ratio.}}{10}{}\protected@file@percent }
+\newlabel{tab:performance}{{3}{10}{}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Crisis profile of the baseline models, monthly rebalancing, equal-weighted across six crises (C1--C6). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text  {MCap}}) - 1$. $\Delta $ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta $ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C1 excluded, as MCap did not recover before the GFC; weights rescaled over C2--C6). Negative $\Delta $ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}}{11}{}\protected@file@percent }
+\newlabel{tab:crisis}{{4}{11}{}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}Detection Quality}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Portfolio Performance}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}LSTM (No Regime)}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}LSTM (Changepoint VIX)}{11}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}LSTM (Changepoint VIX, HRP)}{11}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and HRP: monthly portfolio value (NAV).}}{11}{}\protected@file@percent }
+\newlabel{fig:nav_lstm_changepoint_hrp}{{9}{11}{}{figure.9}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}LSTM (HMM S\&P 500)}{12}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV).}}{12}{}\protected@file@percent }
+\newlabel{fig:nav_lstm_hmm}{{10}{12}{}{figure.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}LSTM (Wasserstein S\&P 500 and VIX)}{12}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV).}}{12}{}\protected@file@percent }
+\newlabel{fig:nav_lstm_wasserstein}{{11}{12}{}{figure.11}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}{12}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Average crisis excess return over the benchmark per model: peak to trough ($x$) vs.\ trough to recovery ($y$). The dotted line marks $x + y = 0$: models above it gain over the whole crisis (peak to recovery), models below lose. The line is approximate, since the two phases compound, $(1+x)(1+y)-1 \ne  x+y$, rather than add.}}{13}{}\protected@file@percent }
+\newlabel{fig:scatter_crisis_excess}{{12}{13}{}{figure.12}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}References}{14}{}\protected@file@percent }
+\gdef \@abspage@last{16}
