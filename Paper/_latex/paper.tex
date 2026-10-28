@@ -124,12 +124,13 @@
 \newcommand{\crisis}[3]{\crisisshade{#1}{#2}{#3}\crisismarks{#1}{#2}{#3}}
 % #1 = macro applied to every crisis (peak, trough, even)
 \newcommand{\crisislist}[1]{%
-    #1{2000-03-23}{2002-10-09}{2007-05-31}% C1
-    #1{2007-10-09}{2009-03-09}{2013-03-28}% C2
-    #1{2018-09-21}{2018-12-24}{2019-04-23}% C3
-    #1{2020-02-19}{2020-03-23}{2020-08-12}% C4
-    #1{2022-01-03}{2022-10-12}{2024-01-19}% C5
-    #1{2025-02-19}{2025-04-08}{2025-06-26}% C6
+    #1{1998-07-17}{1998-08-31}{1998-11-23}% C1
+    #1{2000-03-24}{2002-10-09}{2007-05-30}% C2
+    #1{2007-10-09}{2009-03-09}{2013-03-28}% C3
+    #1{2018-09-20}{2018-12-24}{2019-04-23}% C4
+    #1{2020-02-19}{2020-03-23}{2020-08-18}% C5
+    #1{2022-01-03}{2022-10-12}{2024-01-19}% C6
+    #1{2025-02-19}{2025-04-08}{2025-06-27}% C7
 }
 \newcommand{\crises}{\crisislist\crisis}
 \newcommand{\crisesshade}{\crisislist\crisisshade}
@@ -448,7 +449,7 @@ Methodology and calculation 1:1 to the paper
 
 \begin{table}[htbp]
     \centering
-    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across six crises (C1--C6). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C1 excluded, as MCap did not recover before the GFC; weights rescaled over C2--C6). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
+    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across seven crises (C1--C7). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C2 excluded, as MCap did not recover before the GFC; weights rescaled over C1 and C3--C7). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
     \label{tab:crisis}
     \vspace{4pt}
     % excess returns and Ulcer change stored as decimals: shown in %
@@ -536,7 +537,7 @@ Methodology and calculation 1:1 to the paper
 
 \begin{table}[htbp]
     \centering
-    \caption{Crisis detection quality of the regime detectors by evaluation frequency. Defensive: share of days in the crisis state; Episodes: number of crisis-state episodes; Avg.\ ep.: mean length of an episode in trading days; Recall: share of crisis days flagged; Precision: share of flagged days that are crisis days; Lift: precision relative to the share of crisis days in the sample; False alarms: flagged days outside crises; Missed: crises (of six) never flagged.}
+    \caption{Crisis detection quality of the regime detectors by evaluation frequency. Defensive: share of days in the crisis state; Episodes: number of crisis-state episodes; Avg.\ ep.: mean length of an episode in trading days; Recall: share of crisis days flagged; Precision: share of flagged days that are crisis days; Lift: precision relative to the share of crisis days in the sample; False alarms: flagged days outside crises; Missed: crises (of seven) never flagged.}
     \label{tab:detection}
     \vspace{4pt}
     % shares stored as decimals: shown in %; the frequency column is not shown,

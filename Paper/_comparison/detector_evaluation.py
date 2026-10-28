@@ -23,7 +23,7 @@ Two layers
             9 rows per table (3 detectors x monthly / quarterly / yearly).
 No look-ahead: only stored states are read, nothing is refitted.  Calendar:
 the trading days of the portfolio runs, 1998-01-02 .. 2025-12-31; crisis
-dates from crises.py (C1 ... C6).  C6 is censored at the end of the data.
+dates from crises.py (C1 ... C7).  C7 is censored at the end of the data.
 
 Output: _output/_comparison/detector_evaluation.xlsx
   per_crisis   one row per layer x detector x frequency x crisis, all in
@@ -45,7 +45,7 @@ Output: _output/_comparison/detector_evaluation.xlsx
     defensive_after_trough_days late_defensive only: trough -> first defensive day
     still_defensive_at_end      defensive without a break from its switch in
                                 this crisis to the end of the recovery horizon
-                                (next crisis peak; C6: end of the data)
+                                (next crisis peak; C7: end of the data)
     impl_lag_exit, impl_lag_reentry
                                 applied rows: applied minus daily exit_lag /
                                 reentry_lag, the cost of the rebalancing frequency
@@ -302,13 +302,13 @@ NOTES = [
     'defensive peak -> trough). reentry_lag: S&P trough -> first day back to normal (only if defensive '
     'during the crisis; empty if never back).',
     'missed: never defensive peak -> trough. late_defensive: missed, but defensive trough -> break-even. '
-    'still_defensive_at_end: no break from the switch to the next crisis peak (C6: end of the data).',
+    'still_defensive_at_end: no break from the switch to the next crisis peak (C7: end of the data).',
     f'False alarm: a defensive episode overlapping no window from S&P peak - {FALSE_ALARM_BUFFER} '
     'trading days to the S&P break-even.',
     'Classification per day against the label S&P peak -> trough (_ptt, main) and peak -> break-even '
     '(_full, robustness).',
     'No look-ahead: only stored detector states are read; nothing is refitted.',
-    'C6 is censored at the end of the data (2025-12-31).',
+    'C7 is censored at the end of the data (2025-12-31).',
 ]
 
 

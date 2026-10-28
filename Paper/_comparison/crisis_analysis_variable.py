@@ -3,7 +3,7 @@ Crisis performance of the baseline portfolios with portfolio-specific windows.
 
 Same portfolios, files and sheets as crisis_analysis_defined.py (baseline runs
 = no changepoint / hmm / wasserstein in the name; one workbook per frequency;
-sheets overall, C1 ... C6 from crises.main_crises), but only the start of each
+sheets overall, C1 ... C7 from crises.main_crises), but only the start of each
 crisis is taken from crises.py.  From there every portfolio gets its own
 episode:
   start     the crisis peak date of crises.py; portfolio value = 1 (anchor)
@@ -19,14 +19,14 @@ A portfolio whose lowest value stays above 1 - NO_DD_TOL has no drawdown: no
 trough or recovery date, ptt_days = ttp_days = 0, own window = defined window.
 Not recovered = censored: full_days, full_days_underwater and ttp_days are then
 counted up to the recovery search end and mean "at least this many days".
-C1 ... C5 are censored by the next crisis; C6 by the end of the data
-(2025-12-31), so an unrecovered C6 portfolio may simply not have had the time.
+C1 ... C6 are censored by the next crisis; C7 by the end of the data
+(2025-12-31), so an unrecovered C7 portfolio may simply not have had the time.
 Sheet overall: anchoring at the 1998 start would only catch an early dip, so
 the start is the portfolio's own high-water mark before its deepest drawdown
 of the full period, searched to the end of the data.  These episodes differ
 between portfolios (mcap: dot-com peak 2000 -> GFC trough 2009, most others:
 GFC only), so ptt_days_vs_defined and the benchmark columns stay empty there;
-the overall sheet carries the hit rates over C1 ... C6 instead.
+the overall sheet carries the hit rates over C1 ... C7 instead.
 
 Output (as in crisis_analysis_defined.py, see there for roles and fallbacks)
   1. baselines: _output/_comparison/crisis_analysis_variable_<frequency>.xlsx
@@ -68,7 +68,7 @@ Columns (bench = BENCHMARK run of the same frequency)
                           can lower it: not used for comparisons
   full_ulcer_common       Ulcer index over a fixed horizon per crisis:
                           defined start -> full_common_end = the next crisis
-                          peak (C6: end of the data), the same as the
+                          peak (C7: end of the data), the same as the
                           recovery search end; drawdowns from the running
                           high until the own recovery, 0 after.  Same number
                           of days for every portfolio, so a longer recovery
@@ -93,7 +93,7 @@ Columns (bench = BENCHMARK run of the same frequency)
   ttp_return_to_even      return from the own trough back to the anchor,
                           1 / trough value - 1
   hit_rate_full, hit_rate_ptt, hit_rate_ttp
-                          overall sheet only: share of the crises C1 ... C6 in
+                          overall sheet only: share of the crises C1 ... C7 in
                           which the portfolio beats the benchmark (empty for
                           the benchmark).  full: lower full_ulcer_common; ptt:
                           shallower ptt_depth; ttp: fewer ttp_days (recovered

@@ -16,7 +16,7 @@ fallback / regime, base_run = the model's baseline.
 
 3. All runs: one workbook per frequency,
 _output/_comparison/crisis_analysis_all_<frequency>.xlsx (sheets overall,
-C1 ... C6, timing, detector_avg): every run of the
+C1 ... C7, timing, detector_avg): every run of the
 frequency (benchmark, all baselines, controls, all regime runs), each
 compared with the benchmark and with its own baseline (base_run).
 
@@ -66,7 +66,7 @@ Runs are found as in compare_all.py
 Sheets
   overall      crises.overall: full-window metrics plus CAGR, Sharpe,
                Sortino, Calmar and turnover
-  C1 ... C6    crises.main_crises: full window (peak -> recovery), PTT
+  C1 ... C7    crises.main_crises: full window (peak -> recovery), PTT
                (peak -> trough) and TTP (trough -> recovery)
 Rows: one per portfolio (model, run, frequency).  Every window is (start, end]
 and the portfolio value is 1 at its start.
@@ -89,7 +89,7 @@ Columns (bench = BENCHMARK run of the same frequency, same window)
                         overall sheet only (metrics.py; turnover per year
                         without the initial build, as in compare_all.py)
   hit_rate_full, hit_rate_ptt, hit_rate_ttp
-                        overall sheet only: share of the crises C1 ... C6 in
+                        overall sheet only: share of the crises C1 ... C7 in
                         which the excess return of that phase is > 0
                         (empty for the benchmark)
   hit_count_full, hit_count_ptt, hit_count_ttp

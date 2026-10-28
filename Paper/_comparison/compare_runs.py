@@ -82,12 +82,13 @@ BASELINE    = 'baseline'                  # set to 'min_var' to test the regime 
 FREQUENCIES = ['monthly', 'quarterly', 'yearly']     # missing folders are skipped
 
 CRISIS_NAMES = {                # crises.py labels -> short names for the table
-    'crisis_1': 'Dotcom',
-    'crisis_2': 'GFC',
-    'crisis_3': 'MPS',
-    'crisis_4': 'COVID',
-    'crisis_5': 'IaRHC',
-    'crisis_6': 'TPS',
+    'crisis_1': '1998',
+    'crisis_2': 'Dotcom',
+    'crisis_3': 'GFC',
+    'crisis_4': 'MPS',
+    'crisis_5': 'COVID',
+    'crisis_6': 'IaRHC',
+    'crisis_7': 'TPS',
 }
 
 PERIODS_PER_YEAR = 252

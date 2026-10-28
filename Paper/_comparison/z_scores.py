@@ -64,6 +64,7 @@ import pandas as pd
 import compare_all as ca
 from compare_runs import CRISIS_NAMES
 from crises import overall, main_crises
+from crisis_severity import severity
 
 # ----
 # Variables
@@ -89,14 +90,11 @@ METRICS = {
 
 INCLUDE_MODELS = None        # e.g. ['mvo', 'hrp', 'market_cap']; None = all model folders
 
-# Sensitivity analysis: severity s_c of each main crisis, C1 ... C6 in the
-# order of crises.main_crises; weights w_c = s_c / sum_j s_j
-SEVERITY = {
-    'Equal':    [1, 1, 1, 1, 1, 1],
-    'Drawdown': [49.14, 56.78, 19.78, 33.92, 25.43, 18.90],     # |max drawdown| in %
-    'Duration': [930, 517, 94, 33, 282, 48],                    # calendar days peak -> trough
-    'VIX':      [25.28, 32.68, 19.78, 46.42, 26.03, 23.54],     # mean VIX during the crisis
-}
+# Sensitivity analysis: severity s_c of each main crisis, in the order of
+# crises.main_crises; weights w_c = s_c / sum_j s_j.  Equal, Drawdown (|max
+# drawdown| in %), Duration (calendar days peak -> trough), VIX (mean VIX
+# peak -> trough); computed from ^GSPC and ^VIX in crisis_severity.py
+SEVERITY = severity()
 
 # file name -> (frequencies, group) ranked together in it.
 # frequencies: list, None = all.  group: None = all runs; 'base' = runs without

@@ -8,7 +8,7 @@ for monthly, quarterly and yearly; fix and flex are joined on run (both must
 hold the same runs).  Nothing is recomputed: every value is read from them.
 
 Output: _output/_comparison/crisis_summary.xlsx
-  <freq>_crises          one row per run, raw values per crisis C1 ... C6,
+  <freq>_crises          one row per run, raw values per crisis C1 ... C7,
                          grouped by metric (full fix, full flex, ptt, ttp)
   overall                full sample 1998-2025, all frequencies stacked
   <freq>_crises_vs_mcap  the same against mcap of the same frequency and crisis
@@ -17,7 +17,7 @@ Output: _output/_comparison/crisis_summary.xlsx
 Rows: mcap, equal_weight, then per model (mvo, hrp, xgb, rf, lstm) the
 baseline, its control (always min_var) and its regime runs (changepoint,
 hmm, wasserstein; cash before the alternative target).  Columns of each
-metric: C1 ... C6.  Days where the run is not recovered (flex) are lower
+metric: C1 ... C7.  Days where the run is not recovered (flex) are lower
 bounds: numeric, filled light orange.
 
 vs_mcap: returns relative, (1 + r) / (1 + r_mcap) - 1 (checked against the
@@ -45,7 +45,7 @@ from metrics import annualized_return, sharpe_ratio
 # ----
 
 FREQS     = ['monthly', 'quarterly', 'yearly']
-CRISES    = [f'C{i}' for i in range(1, 7)]
+CRISES    = [f'C{i}' for i in range(1, len(main_crises) + 1)]
 SAVE_PATH = cad.SAVE_DIR / 'crisis_summary.xlsx'
 
 ID_COLS     = ['model', 'run', 'frequency', 'role', 'detector', 'series', 'crisis_target',
@@ -342,9 +342,9 @@ NOTES = [
     'flex = common start at the S&P peak, then each portfolio\'s own trough and recovery (back at its start '
     'value), recovery searched up to the next crisis peak (crisis_analysis_variable.py).',
     'ulcer_flex = Ulcer index over a common horizon per crisis, from the crisis peak to the next crisis '
-    'peak (C6: end of the data, 2025-12-31), drawdown from the running high until the own recovery, 0 after; '
+    'peak (C7: end of the data, 2025-12-31), drawdown from the running high until the own recovery, 0 after; '
     'the same number of days for every portfolio, so a longer recovery raises it.',
-    'Censoring: where rec_full_flex is False the portfolio had not recovered by the next crisis peak (C6: by '
+    'Censoring: where rec_full_flex is False the portfolio had not recovered by the next crisis peak (C7: by '
     'the end of the data); days_full_flex and days_ttp_flex then count up to that cut-off and are lower '
     'bounds ("at least"). These cells are numeric and filled light orange.',
     'dd_full_flex = anchored drawdown (lowest value / start value - 1, capped at 0); dd_*_fix = maximum '
@@ -355,10 +355,10 @@ NOTES = [
     'days days - days_mcap (negative = faster), empty if either side is censored (days_full_flex and '
     'days_ttp_flex; C{i}_cens_vs_mcap = True); Ulcer ulcer - ulcer_mcap (negative = less pain); '
     'ret_to_even as a difference; booleans unchanged; the mcap row is 0.',
-    'ret_outside_crises_ann (overall): annualised return on the trading days 1998-2025 outside all six '
+    'ret_outside_crises_ann (overall): annualised return on the trading days 1998-2025 outside all seven '
     'crisis windows (S&P peak -> break-even); computed from the daily returns of each run.',
     'sharpe_outside_crises / sharpe_inside_crises (overall): annualised Sharpe ratio (same risk-free rate as '
-    'full_sharpe) of the pooled daily returns outside / inside the six crisis windows (inside: all six '
+    'full_sharpe) of the pooled daily returns outside / inside the seven crisis windows (inside: all seven '
     'crises together, S&P peak -> break-even).',
     'time_defensive_share (overall): share of trading days 1998-2025 in the crisis portfolio, decided on '
     'the rebalancing dates and effective from the next day; regime runs only.',
