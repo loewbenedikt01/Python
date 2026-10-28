@@ -11,6 +11,7 @@
 \usepgfplotslibrary{dateplot}
 \usepackage{pgfplotstable}
 \usepackage{booktabs}
+\usepackage{placeins}   % \FloatBarrier: keep tables and figures in source order
 
 \usepackage[left=3cm, right=3cm, top=3cm, bottom=3cm]{geometry}
 
@@ -29,6 +30,10 @@
 \newcommand{\lstmchangepointhrpvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_hrp_monthly_monthly_value.csv}
 \newcommand{\lstmhmmvaluefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_monthly_value.csv}
 \newcommand{\lstmwassersteinvaluefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_monthly_value.csv}
+% Defensive holding periods of the regime runs (defensive_periods.py)
+\newcommand{\lstmchangepointdefensivefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_defensive.csv}
+\newcommand{\lstmhmmdefensivefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_defensive.csv}
+\newcommand{\lstmwassersteindefensivefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_defensive.csv}
 \newcommand{\scatterfile}{data/scatterplot.txt}
 \newcommand{\tableonefile}{data/table_1.txt}
 \newcommand{\tabletwofile}{data/table_2.txt}
@@ -98,26 +103,43 @@
     ymin=0.5, ymax=4,
     ytick={1,2,3,4},
     ylabel={NAV},
+    axis on top,
 }}
 
 % Crisis periods (crises.txt): grey shading from peak to even,
 % vertical red lines at peak, trough and even.
 % Vertical extent is \crisisymin to \crisisymax (set to the axis ymin/ymax).
+% \crisesshade and \criseslines draw the two parts separately, so other
+% layers (e.g. \defensive) can go between the shading and the lines.
 \newcommand{\crisisymin}{0}
 \newcommand{\crisisymax}{1}
-\newcommand{\crisis}[3]{%
+\newcommand{\crisisshade}[3]{%
     \addplot[forget plot, draw=none, fill=gray!25] coordinates {(#1,\crisisymin) (#3,\crisisymin) (#3,\crisisymax) (#1,\crisisymax)} --cycle;
+}
+\newcommand{\crisismarks}[3]{%
     \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#1,\crisisymin) (#1,\crisisymax)};
     \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#2,\crisisymin) (#2,\crisisymax)};
     \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#3,\crisisymin) (#3,\crisisymax)};
 }
-\newcommand{\crises}{%
-    \crisis{2000-03-23}{2002-10-09}{2007-05-31}% C1
-    \crisis{2007-10-09}{2009-03-09}{2013-03-28}% C2
-    \crisis{2018-09-21}{2018-12-24}{2019-04-23}% C3
-    \crisis{2020-02-19}{2020-03-23}{2020-08-12}% C4
-    \crisis{2022-01-03}{2022-10-12}{2024-01-19}% C5
-    \crisis{2025-02-19}{2025-04-08}{2025-06-26}% C6
+\newcommand{\crisis}[3]{\crisisshade{#1}{#2}{#3}\crisismarks{#1}{#2}{#3}}
+% #1 = macro applied to every crisis (peak, trough, even)
+\newcommand{\crisislist}[1]{%
+    #1{2000-03-23}{2002-10-09}{2007-05-31}% C1
+    #1{2007-10-09}{2009-03-09}{2013-03-28}% C2
+    #1{2018-09-21}{2018-12-24}{2019-04-23}% C3
+    #1{2020-02-19}{2020-03-23}{2020-08-12}% C4
+    #1{2022-01-03}{2022-10-12}{2024-01-19}% C5
+    #1{2025-02-19}{2025-04-08}{2025-06-26}% C6
+}
+\newcommand{\crises}{\crisislist\crisis}
+\newcommand{\crisesshade}{\crisislist\crisisshade}
+\newcommand{\criseslines}{\crisislist\crisismarks}
+
+% Defensive holding periods of a regime run (#1 = defensive file): light green,
+% semi-transparent so the grey crisis shading stays visible underneath.
+\newcommand{\defensive}[1]{%
+    \addplot[forget plot, draw=none, fill=green!45, fill opacity=0.5, const plot]
+        table[x=date, y expr=\thisrow{defensive}*\crisisymax] {#1} \closedcycle;
 }
 
 
@@ -401,6 +423,115 @@ Methodology and calculation 1:1 to the paper
 \end{figure}
 
 
+\section{Portfolio Performance}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Full-period performance per model, sorted by Sharpe ratio.}
+    \label{tab:performance}
+    \vspace{4pt}
+    % returns, volatility and drawdown stored as decimals: shown in %
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={model,cagr,volatility,sharpe,max_dd,turnover},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        fixed, fixed zerofill,
+        columns/model/.style={string type, column name=Model, column type=l},
+        columns/cagr/.style={column name={CAGR (\%)}, multiply by=100, precision=2},
+        columns/volatility/.style={column name={Volatility (\%)}, multiply by=100, precision=2},
+        columns/sharpe/.style={column name=Sharpe, precision=3},
+        columns/max_dd/.style={column name={Max.\ DD (\%)}, multiply by=100, precision=2},
+        columns/turnover/.style={column name={\begin{tabular}{@{}c@{}}Turnover\\p.a.\ (\%)\end{tabular}}, multiply by=100, precision=2},
+    ]{\tableonefile}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across six crises (C1--C6). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C1 excluded, as MCap did not recover before the GFC; weights rescaled over C2--C6). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
+    \label{tab:crisis}
+    \vspace{4pt}
+    % excess returns and Ulcer change stored as decimals: shown in %
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \pgfplotstabletypeset[
+        col sep=comma,
+        columns={model,ptt_excess,ttp_excess,full_excess,delta_ulcer,delta_recovery_days,hits_ptt,hits_ttp},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        fixed, fixed zerofill,
+        empty cells with={--},
+        columns/model/.style={string type, column name=Model, column type=l},
+        columns/ptt_excess/.style={column name={PTT (\%)}, multiply by=100, precision=2},
+        columns/ttp_excess/.style={column name={TTP (\%)}, multiply by=100, precision=2},
+        columns/full_excess/.style={column name={Full (\%)}, multiply by=100, precision=2},
+        columns/delta_ulcer/.style={column name={$\Delta$ Ulcer (pp)}, multiply by=100, precision=2},
+        columns/delta_recovery_days/.style={column name={$\Delta$ Rec.\ (days)}, precision=0},
+        columns/hits_ptt/.style={string type, column name={Hits PTT}, column type=c},
+        columns/hits_ttp/.style={string type, column name={Hits TTP}, column type=c},
+    ]{\tabletwofile}
+\end{table}
+\FloatBarrier
+
+\subsection{Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            width=0.8\textwidth,
+            axis equal image,      % same scale on both axes: the net line is at 45 degrees
+            xmin=-3, xmax=15, ymin=-6, ymax=7,
+            xtick={-2,0,...,14}, ytick={-6,-4,...,6},
+            xlabel={Excess return vs. MCap, peak -> trough (\%)},
+            ylabel={Excess return vs. MCap, trough -> peak (\%)},
+            grid=major, grid style={gray!20},
+            tick label style={font=\small},
+            table/col sep=comma,
+            % dashed zero lines = benchmark level
+            extra x ticks={0}, extra y ticks={0},
+            extra tick style={grid=major, grid style={gray, dashed}, tick label style={opacity=0}},
+            % legend below the plot, two columns
+            legend style={at={(0.5,-0.17)}, anchor=north, legend columns=2,
+                          font=\footnotesize, draw=gray!50, /tikz/every even column/.append style={column sep=1em}},
+            legend cell align=left,
+        ]
+            % net ~ 0 over the whole crisis: ptt + ttp = 0 (drawn over the visible range x = -3 .. 6)
+            \addplot[forget plot, no marks, black!60, densely dotted, thick, domain=-3:6, samples=2]
+                {-x} node[pos=0.78, sloped, above, font=\footnotesize] {net $\approx 0$};
+            \node[font=\footnotesize, black!60, anchor=south west] at (axis cs:-2.8,-5.8) {net loss};
+            \node[font=\footnotesize, black!60, anchor=north east] at (axis cs:14.8,6.8) {net gain};
+            % points coloured by model family (column family)
+            \addplot[
+                scatter, only marks, mark size=2pt,
+                point meta=explicit symbolic,
+                scatter/classes={
+                    benchmark={mark=*, famBenchmark},
+                    simple={mark=*, famSimple},
+                    classical={mark=*, famClassical},
+                    ml={mark=*, famML}},
+            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
+                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix},
+                    meta=family] {\scatterfile};
+            \legend{Benchmark, {Simple (Equal Weight)}, {Classical (MVO, HRP)}, {ML (XGB, RF, LSTM)}}
+            % model names (separate plot: custom node text switches off the class colours);
+            % label side per point from column label_pos (north / south / east / west)
+            \addplot[
+                forget plot, only marks, mark=none,
+                visualization depends on={value \thisrow{model} \as \modelname},
+                visualization depends on={value \thisrow{label_pos} \as \labelpos},
+                nodes near coords={\expandafter\detokenize\expandafter{\modelname}},
+                nodes near coords style={font=\footnotesize, anchor=\labelanchor{\labelpos}},
+            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
+                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix}] {\scatterfile};
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Average crisis excess return over the benchmark per model: peak to trough ($x$) vs.\ trough to recovery ($y$). The dotted line marks $x + y = 0$: models above it gain over the whole crisis (peak to recovery), models below lose. The line is approximate, since the two phases compound, $(1+x)(1+y)-1 \ne x+y$, rather than add.}
+    \label{fig:scatter_crisis_excess}
+\end{figure}
+\FloatBarrier
+
+
 \subsection{Detection Quality}
 
 \begin{table}[htbp]
@@ -466,56 +597,8 @@ Methodology and calculation 1:1 to the paper
         columns/never_recovered_before_next_crisis/.style={string type, column name={Still defensive}, column type=l},
     ]{\tablefourfile}
 \end{table}
+\FloatBarrier
 
-
-\section{Portfolio Performance}
-
-\begin{table}[htbp]
-    \centering
-    \caption{Full-period performance per model, sorted by Sharpe ratio.}
-    \label{tab:performance}
-    \vspace{4pt}
-    % returns, volatility and drawdown stored as decimals: shown in %
-    \pgfplotstabletypeset[
-        col sep=comma,
-        columns={model,cagr,volatility,sharpe,max_dd,turnover},
-        every head row/.style={before row=\toprule, after row=\midrule},
-        every last row/.style={after row=\bottomrule},
-        fixed, fixed zerofill,
-        columns/model/.style={string type, column name=Model, column type=l},
-        columns/cagr/.style={column name={CAGR (\%)}, multiply by=100, precision=2},
-        columns/volatility/.style={column name={Volatility (\%)}, multiply by=100, precision=2},
-        columns/sharpe/.style={column name=Sharpe, precision=3},
-        columns/max_dd/.style={column name={Max.\ DD (\%)}, multiply by=100, precision=2},
-        columns/turnover/.style={column name={\begin{tabular}{@{}c@{}}Turnover\\p.a.\ (\%)\end{tabular}}, multiply by=100, precision=2},
-    ]{\tableonefile}
-\end{table}
-
-\begin{table}[htbp]
-    \centering
-    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across six crises (C1--C6). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C1 excluded, as MCap did not recover before the GFC; weights rescaled over C2--C6). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
-    \label{tab:crisis}
-    \vspace{4pt}
-    % excess returns and Ulcer change stored as decimals: shown in %
-    \small
-    \setlength{\tabcolsep}{4pt}
-    \pgfplotstabletypeset[
-        col sep=comma,
-        columns={model,ptt_excess,ttp_excess,full_excess,delta_ulcer,delta_recovery_days,hits_ptt,hits_ttp},
-        every head row/.style={before row=\toprule, after row=\midrule},
-        every last row/.style={after row=\bottomrule},
-        fixed, fixed zerofill,
-        empty cells with={--},
-        columns/model/.style={string type, column name=Model, column type=l},
-        columns/ptt_excess/.style={column name={PTT (\%)}, multiply by=100, precision=2},
-        columns/ttp_excess/.style={column name={TTP (\%)}, multiply by=100, precision=2},
-        columns/full_excess/.style={column name={Full (\%)}, multiply by=100, precision=2},
-        columns/delta_ulcer/.style={column name={$\Delta$ Ulcer (pp)}, multiply by=100, precision=2},
-        columns/delta_recovery_days/.style={column name={$\Delta$ Rec.\ (days)}, precision=0},
-        columns/hits_ptt/.style={string type, column name={Hits PTT}, column type=c},
-        columns/hits_ttp/.style={string type, column name={Hits TTP}, column type=c},
-    ]{\tabletwofile}
-\end{table}
 
 \subsection{LSTM (No Regime)}
 
@@ -551,20 +634,22 @@ Methodology and calculation 1:1 to the paper
 \end{figure}
 
 
-\subsection{LSTM (Changepoint VIX, HRP)}
+\subsection{LSTM (Changepoint VIX, Cash)}
 
 \begin{figure}[htbp]
     \centering
     \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{14}
+    \renewcommand{\crisisymax}{4}
     \begin{tikzpicture}
-        \begin{axis}[navchart, ymax=14, ytick={2,4,6,8,10,12,14}]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmchangepointhrpvaluefile};
+        \begin{axis}[navchart]
+            \crisesshade
+            \defensive{\lstmchangepointdefensivefile}
+            \criseslines
+            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmvaluefile};
         \end{axis}
     \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and HRP: monthly portfolio value (NAV).}
-    \label{fig:nav_lstm_changepoint_hrp}
+    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
+    \label{fig:nav_lstm_changepoint_cash}
 \end{figure}
 
 
@@ -576,11 +661,13 @@ Methodology and calculation 1:1 to the paper
     \renewcommand{\crisisymax}{8}
     \begin{tikzpicture}
         \begin{axis}[navchart, ymax=8, ytick={2,4,6,8}]
-            \crises
+            \crisesshade
+            \defensive{\lstmhmmdefensivefile}
+            \criseslines
             \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmhmmvaluefile};
         \end{axis}
     \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV).}
+    \caption{LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
     \label{fig:nav_lstm_hmm}
 \end{figure}
 
@@ -593,71 +680,17 @@ Methodology and calculation 1:1 to the paper
     \renewcommand{\crisisymax}{6}
     \begin{tikzpicture}
         \begin{axis}[navchart, ymax=6, ytick={1,2,3,4,5,6}]
-            \crises
+            \crisesshade
+            \defensive{\lstmwassersteindefensivefile}
+            \criseslines
             \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmwassersteinvaluefile};
         \end{axis}
     \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV).}
+    \caption{LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
     \label{fig:nav_lstm_wasserstein}
 \end{figure}
 
 
-\subsection{Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}
-        \begin{axis}[
-            width=0.8\textwidth,
-            axis equal image,      % same scale on both axes: the net line is at 45 degrees
-            xmin=-3, xmax=15, ymin=-6, ymax=7,
-            xtick={-2,0,...,14}, ytick={-6,-4,...,6},
-            xlabel={Excess return vs. MCap, peak -> trough (\%)},
-            ylabel={Excess return vs. MCap, trough -> peak (\%)},
-            grid=major, grid style={gray!20},
-            tick label style={font=\small},
-            table/col sep=comma,
-            % dashed zero lines = benchmark level
-            extra x ticks={0}, extra y ticks={0},
-            extra tick style={grid=major, grid style={gray, dashed}, tick label style={opacity=0}},
-            % legend below the plot, two columns
-            legend style={at={(0.5,-0.17)}, anchor=north, legend columns=2,
-                          font=\footnotesize, draw=gray!50, /tikz/every even column/.append style={column sep=1em}},
-            legend cell align=left,
-        ]
-            % net ~ 0 over the whole crisis: ptt + ttp = 0 (drawn over the visible range x = -3 .. 6)
-            \addplot[forget plot, no marks, black!60, densely dotted, thick, domain=-3:6, samples=2]
-                {-x} node[pos=0.78, sloped, above, font=\footnotesize] {net $\approx 0$};
-            \node[font=\footnotesize, black!60, anchor=south west] at (axis cs:-2.8,-5.8) {net loss};
-            \node[font=\footnotesize, black!60, anchor=north east] at (axis cs:14.8,6.8) {net gain};
-            % points coloured by model family (column family)
-            \addplot[
-                scatter, only marks, mark size=2pt,
-                point meta=explicit symbolic,
-                scatter/classes={
-                    benchmark={mark=*, famBenchmark},
-                    simple={mark=*, famSimple},
-                    classical={mark=*, famClassical},
-                    ml={mark=*, famML}},
-            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
-                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix},
-                    meta=family] {\scatterfile};
-            \legend{Benchmark, {Simple (Equal Weight)}, {Classical (MVO, HRP)}, {ML (XGB, RF, LSTM)}}
-            % model names (separate plot: custom node text switches off the class colours);
-            % label side per point from column label_pos (north / south / east / west)
-            \addplot[
-                forget plot, only marks, mark=none,
-                visualization depends on={value \thisrow{model} \as \modelname},
-                visualization depends on={value \thisrow{label_pos} \as \labelpos},
-                nodes near coords={\expandafter\detokenize\expandafter{\modelname}},
-                nodes near coords style={font=\footnotesize, anchor=\labelanchor{\labelpos}},
-            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
-                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix}] {\scatterfile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{Average crisis excess return over the benchmark per model: peak to trough ($x$) vs.\ trough to recovery ($y$). The dotted line marks $x + y = 0$: models above it gain over the whole crisis (peak to recovery), models below lose. The line is approximate, since the two phases compound, $(1+x)(1+y)-1 \ne x+y$, rather than add.}
-    \label{fig:scatter_crisis_excess}
-\end{figure}
 
 
 

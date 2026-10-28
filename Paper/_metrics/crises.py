@@ -14,12 +14,13 @@ overall = [
 ]
 
 main_crises = [
-    {'label': 'crisis_1',   'peak': '2000-03-23',      'trough': '2002-10-09',     'even': '2007-05-31'},        # Dotcom Crisis
-    {'label': 'crisis_2',   'peak': '2007-10-09',      'trough': '2009-03-09',     'even': '2013-03-28'},        # Global Financial Crisis
-    {'label': 'crisis_3',   'peak': '2018-09-21',      'trough': '2018-12-24',     'even': '2019-04-23'},        # Monetary Policy Shock
-    {'label': 'crisis_4',   'peak': '2020-02-19',      'trough': '2020-03-23',     'even': '2020-08-12'},        # Covid-19 Crisis
-    {'label': 'crisis_5',   'peak': '2022-01-03',      'trough': '2022-10-12',     'even': '2024-01-19'},        # Inflation and Rate Hike Cycle
-    {'label': 'crisis_6',   'peak': '2025-02-19',      'trough': '2025-04-08',     'even': '2025-06-26'},        # Trade Policy Shock
+    {'label': 'crisis_1',   'peak': '1998-07-17',      'trough': '1998-08-31',     'even': '1998-11-23'},        # 1998 Crisis
+    {'label': 'crisis_2',   'peak': '2000-03-24',      'trough': '2002-10-09',     'even': '2007-05-30'},        # Dotcom Crisis
+    {'label': 'crisis_3',   'peak': '2007-10-09',      'trough': '2009-03-09',     'even': '2013-03-28'},        # Global Financial Crisis
+    {'label': 'crisis_4',   'peak': '2018-09-20',      'trough': '2018-12-24',     'even': '2019-04-23'},        # Monetary Policy Shock
+    {'label': 'crisis_5',   'peak': '2020-02-19',      'trough': '2020-03-23',     'even': '2020-08-18'},        # Covid-19 Crisis
+    {'label': 'crisis_6',   'peak': '2022-01-03',      'trough': '2022-10-12',     'even': '2024-01-19'},        # Inflation and Rate Hike Cycle
+    {'label': 'crisis_7',   'peak': '2025-02-19',      'trough': '2025-04-08',     'even': '2025-06-27'},        # Trade Policy Shock
 ]
 
 sub_crises  = [
