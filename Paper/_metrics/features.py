@@ -79,13 +79,13 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
     f: dict = {}
     last = c.iloc[-1]
 
-    for name, n in [('mom_1w', 5), ('mom_2w', 10), ('mom_1m', 21),
-                    ('mom_3m', 63), ('mom_6m', 126), ('mom_9m', 189)]:
+    for name, n in [('mom_1w', 5), ('mom_1m', 21),              # ('mom_2w', 10),
+                    ('mom_6m', 126)]:           # ('mom_3m', 63), , ('mom_9m', 189)
         f[name] = c.pct_change(n, fill_method=None).iloc[-1]
 
     f['mom_12_1']     = c.iloc[-22] / c.iloc[-253] - 1
-    f['mom_12_1_lag'] = c.iloc[-43] / c.iloc[-274] - 1
-    f['mom_chg_12_1'] = f['mom_12_1'] - f['mom_12_1_lag']
+    #f['mom_12_1_lag'] = c.iloc[-43] / c.iloc[-274] - 1
+    #f['mom_chg_12_1'] = f['mom_12_1'] - f['mom_12_1_lag']
 
     cr = ret.fillna(0.0).cumsum()
     f['mom_accel_3m'] = (cr.iloc[-1] - cr.iloc[-64]) - (cr.iloc[-64] - cr.iloc[-127])
@@ -96,7 +96,7 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
 
     f['ma_ratio_50_200'] = c.tail(50).mean()  / c.tail(200).mean() - 1
     f['ma_ratio_20_100'] = c.tail(20).mean()  / c.tail(100).mean() - 1
-    f['px_vs_200dma']    = last / c.tail(200).mean() - 1
+    #f['px_vs_200dma']    = last / c.tail(200).mean() - 1
 
     y   = np.log(c.tail(126).to_numpy())
     T   = y.shape[0]
@@ -112,8 +112,8 @@ def _momentum(c: pd.DataFrame, ret: pd.DataFrame) -> dict:
         sigma  = np.sqrt(np.nansum(resid ** 2, axis=0) / dof)
         ss_res = np.nansum(resid ** 2, axis=0)
         ss_tot = np.nansum(yc ** 2, axis=0)
-    f['trend_tstat_6m'] = pd.Series(slope / (sigma / np.sqrt(Sxx)), index=c.columns)
-    f['trend_r2_6m']    = pd.Series(1.0 - ss_res / ss_tot, index=c.columns)
+    #f['trend_tstat_6m'] = pd.Series(slope / (sigma / np.sqrt(Sxx)), index=c.columns)
+    #f['trend_r2_6m']    = pd.Series(1.0 - ss_res / ss_tot, index=c.columns)
     r    = ret.iloc[-TRADING_DAYS_PER_YEAR:-SKIP]
     pos  = (r > 0).sum()
     neg  = (r < 0).sum()
@@ -136,9 +136,9 @@ def _reversal(c: pd.DataFrame, ret: pd.DataFrame, o: pd.DataFrame) -> dict:
     overnight = (o / c.shift(1) - 1).tail(63)
     intraday  = (c / o - 1).tail(63)
     on_c, in_c = overnight.sum(), intraday.sum()
-    f['overnight_ret_3m'] = on_c
-    f['intraday_ret_3m']  = in_c
-    f['overnight_share']  = on_c / (on_c.abs() + in_c.abs())
+    #f['overnight_ret_3m'] = on_c
+    #f['intraday_ret_3m']  = in_c
+    #f['overnight_share']  = on_c / (on_c.abs() + in_c.abs())
     return f
 
 def _volatility(ret: pd.DataFrame, o: pd.DataFrame, h: pd.DataFrame,
@@ -149,22 +149,22 @@ def _volatility(ret: pd.DataFrame, o: pd.DataFrame, h: pd.DataFrame,
     f['vol_ratio'] = ret.tail(21).std() / ret.tail(252).std()
 
     hl = np.log(h / l)
-    f['parkinson_1m'] = np.sqrt((hl.tail(21) ** 2).mean() / (4 * np.log(2))) * ANN
+    #f['parkinson_1m'] = np.sqrt((hl.tail(21) ** 2).mean() / (4 * np.log(2))) * ANN
     f['parkinson_3m'] = np.sqrt((hl.tail(63) ** 2).mean() / (4 * np.log(2))) * ANN
 
     co = np.log(c / o)
     gk = 0.5 * hl ** 2 - (2 * np.log(2) - 1) * co ** 2
-    f['garman_klass_1m'] = np.sqrt(gk.tail(21).mean().clip(lower=0)) * ANN
+    #f['garman_klass_1m'] = np.sqrt(gk.tail(21).mean().clip(lower=0)) * ANN
 
     r6 = ret.tail(126)
-    f['downside_vol_6m'] = np.sqrt((r6.clip(upper=0) ** 2).mean()) * ANN
-    f['ret_skew_6m']     = r6.skew()
-    f['ret_kurt_6m']     = r6.kurt()
+    #f['downside_vol_6m'] = np.sqrt((r6.clip(upper=0) ** 2).mean()) * ANN
+    #f['ret_skew_6m']     = r6.skew()
+    #f['ret_kurt_6m']     = r6.kurt()
 
     f['max_ret_1m'] = ret.tail(21).max()
     f['min_ret_1m'] = ret.tail(21).min()
 
-    f['vol_of_vol_6m'] = ret.rolling(21).std().tail(126).std()
+    #f['vol_of_vol_6m'] = ret.rolling(21).std().tail(126).std()
     return f
 
 
@@ -208,12 +208,12 @@ def _liquidity(ret: pd.DataFrame, close_raw: pd.DataFrame, vol: pd.DataFrame) ->
     f: dict = {}
     dollar = (close_raw * vol).replace(0.0, np.nan)
     f['amihud_1m'] = (ret.abs().tail(21)  / dollar.tail(21)).mean()
-    f['amihud_6m'] = (ret.abs().tail(126) / dollar.tail(126)).mean()
+    #f['amihud_6m'] = (ret.abs().tail(126) / dollar.tail(126)).mean()
     f['dollar_vol_level'] = np.log(dollar.tail(21).mean())
-    f['dollar_vol_trend'] = dollar.tail(21).mean() / dollar.tail(126).mean()
+    #f['dollar_vol_trend'] = dollar.tail(21).mean() / dollar.tail(126).mean()
     f['volume_shock']     = vol.tail(5).mean() / vol.tail(60).mean()
     dv = vol.pct_change(fill_method=None).replace([np.inf, -np.inf], np.nan)
-    f['pv_corr_1m']       = ret.tail(21).corrwith(dv.tail(21))
+    #f['pv_corr_1m']       = ret.tail(21).corrwith(dv.tail(21))
     return f
 
 def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
@@ -227,7 +227,7 @@ def _tail(ret: pd.DataFrame, c: pd.DataFrame) -> dict:
     dd = w / w.cummax() - 1
     f['max_dd_12m'] = dd.min()
     f['ulcer_12m']  = np.sqrt((dd ** 2).mean())
-    f['days_since_high'] = len(w) - 1 - w.reset_index(drop=True).idxmax()
+    #f['days_since_high'] = len(w) - 1 - w.reset_index(drop=True).idxmax()
     return f
 
 

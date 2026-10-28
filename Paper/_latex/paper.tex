@@ -34,11 +34,12 @@
 \newcommand{\lstmchangepointdefensivefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_defensive.csv}
 \newcommand{\lstmhmmdefensivefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_defensive.csv}
 \newcommand{\lstmwassersteindefensivefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_defensive.csv}
-\newcommand{\scatterfile}{data/scatterplot.txt}
-\newcommand{\tableonefile}{data/table_1.txt}
-\newcommand{\tabletwofile}{data/table_2.txt}
-\newcommand{\tablethreefile}{data/table_3.txt}
-\newcommand{\tablefourfile}{data/table_4.txt}
+\newcommand{\scatterfile}{data_finalized/scatterplot.txt}
+\newcommand{\tableonefile}{data_finalized/table_1.txt}
+\newcommand{\tabletwofile}{data_finalized/table_2.txt}
+\newcommand{\tablethreefile}{data_finalized/table_3.txt}
+\newcommand{\tablefourfile}{data_finalized/table_4.txt}
+\newcommand{\tablecrisesfile}{data_finalized/table_2.csv}   % data_prep_finalized.ipynb, Table 2
 
 % Model family colours (Okabe-Ito, colour-blind safe); use the same in all charts
 \definecolor{famBenchmark}{RGB}{110,110,110}   % market_cap
@@ -81,20 +82,22 @@
     ylabel={S\&P 500 cum.\ log return},
     grid=none,
 }}
-% Regime p_crisis over S&P 500 cumulative log return; #1 = regime file
-\newcommand{\regimevssp}[1]{%
-    \begin{tikzpicture}
-        \renewcommand{\crisisymin}{-0.5}%
-        \renewcommand{\crisisymax}{2}%
-        \begin{axis}[spunderlay]
-            \crises
-            \addplot[gray!70, line width=0.4pt] table[x=date, y expr=ln(\thisrow{nav})] {\spfile};
-        \end{axis}
-        \begin{axis}[pcrisis, axis y line*=left]
-            \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {#1};
-            \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
-        \end{axis}
-    \end{tikzpicture}%
+% One panel of the stacked regime figure: p_crisis of one detector.
+% #1 = regime file, #2 = y label (detector), #3 = axis options (position,
+% x tick labels).  Inside a tikzpicture; panels of height \regimepanelheight
+% placed at multiples of it touch.  The y range is padded slightly so the
+% 0 and 1 labels of neighbouring panels do not collide.
+\newcommand{\regimepanelheight}{3cm}
+\newcommand{\regimepanel}[3]{%
+    \renewcommand{\crisisymin}{-0.06}%
+    \renewcommand{\crisisymax}{1.06}%
+    \begin{axis}[timechart, scale only axis, width=0.88\textwidth, height=\regimepanelheight,
+                 ymin=-0.06, ymax=1.06, ytick={0,0.5,1}, ylabel={#2}, axis on top,
+                 ymajorgrids=false, #3]     % the grid would cover the threshold line
+        \crises
+        \addplot[forget plot, red, dashed] coordinates {(1998-01-01,0.5) (2025-12-31,0.5)};
+        \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {#1};
+    \end{axis}%
 }
 
 % Portfolio value (NAV) line chart
@@ -404,23 +407,13 @@ Methodology and calculation 1:1 to the paper
 
 \begin{figure}[htbp]
     \centering
-    \regimevssp{\changepointfile}
-    \caption{Changepoint detection (VIX): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
-    \label{fig:pcrisis_sp_changepoint}
-\end{figure}
-
-\begin{figure}[htbp]
-    \centering
-    \regimevssp{\hmmfile}
-    \caption{Hidden Markov Model (S\&P 500): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
-    \label{fig:pcrisis_sp_hmm}
-\end{figure}
-
-\begin{figure}[htbp]
-    \centering
-    \regimevssp{\wassersteinfile}
-    \caption{Wasserstein clustering (S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$ (left) over S\&P 500 cumulative log return (right, grey).}
-    \label{fig:pcrisis_sp_wasserstein}
+    \begin{tikzpicture}
+        \regimepanel{\changepointfile}{Changepoint}{at={(0,0)}, xticklabel style={opacity=0}}
+        \regimepanel{\hmmfile}{HMM}{at={(0,-\regimepanelheight)}, xticklabel style={opacity=0}}
+        \regimepanel{\wassersteinfile}{Wasserstein}{at={(0,-2*\regimepanelheight)}}
+    \end{tikzpicture}
+    \caption{Crisis probability $p_{\mathrm{crisis}}$ of the three regime detectors: changepoint detection (VIX, top), Hidden Markov Model (S\&P 500, middle) and Wasserstein clustering (S\&P 500 and VIX, bottom). Dashed: 0.5 threshold; grey shading: crisis periods; red lines: peak, trough and recovery.}
+    \label{fig:pcrisis_sp}
 \end{figure}
 
 
@@ -471,6 +464,39 @@ Methodology and calculation 1:1 to the paper
         columns/hits_ptt/.style={string type, column name={Hits PTT}, column type=c},
         columns/hits_ttp/.style={string type, column name={Hits TTP}, column type=c},
     ]{\tabletwofile}
+\end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Return (Ret.) and maximum drawdown (MDD) per crisis, in \%, monthly rebalancing, from the S\&P~500 peak until the S\&P~500 is back at that peak: C1 1998 (Russia/LTCM), C2 dot-com, C3 GFC, C4 monetary policy shock 2018, C5 COVID-19, C6 inflation and rate hikes 2022, C7 trade policy shock 2025. GSPC: S\&P~500 price index, its return is about zero by construction of the windows.}
+    \label{tab:crisis_returns}
+    \vspace{4pt}
+    % returns and drawdowns stored as decimals: shown in %
+    \footnotesize
+    \setlength{\tabcolsep}{1.8pt}
+    \pgfplotstabletypeset[
+        col sep=comma,
+        every head row/.style={
+            before row={\toprule
+                & \multicolumn{2}{c}{C1} & \multicolumn{2}{c}{C2} & \multicolumn{2}{c}{C3} & \multicolumn{2}{c}{C4}
+                & \multicolumn{2}{c}{C5} & \multicolumn{2}{c}{C6} & \multicolumn{2}{c}{C7}\\
+                \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
+                \cmidrule(lr){10-11}\cmidrule(lr){12-13}\cmidrule(lr){14-15}},
+            after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        every row no 0/.style={after row=\midrule},           % GSPC above the models
+        fixed, fixed zerofill, precision=1,
+        ret/.style={column name=Ret., multiply by=100},
+        mdd/.style={column name=MDD, multiply by=100},
+        columns/model/.style={string type, column name=Model, column type=l},
+        columns/c1_full_return/.style=ret, columns/c1_full_max_dd/.style=mdd,
+        columns/c2_full_return/.style=ret, columns/c2_full_max_dd/.style=mdd,
+        columns/c3_full_return/.style=ret, columns/c3_full_max_dd/.style=mdd,
+        columns/c4_full_return/.style=ret, columns/c4_full_max_dd/.style=mdd,
+        columns/c5_full_return/.style=ret, columns/c5_full_max_dd/.style=mdd,
+        columns/c6_full_return/.style=ret, columns/c6_full_max_dd/.style=mdd,
+        columns/c7_full_return/.style=ret, columns/c7_full_max_dd/.style=mdd,
+    ]{\tablecrisesfile}
 \end{table}
 \FloatBarrier
 

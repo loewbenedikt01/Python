@@ -70,12 +70,12 @@ from portfolio import build_portfolio, load_prices, universe_for, REBALANCE_MONT
 # ----
 
 WINDOW_MODE  = 'holdout'         # 'holdout' | 'latest'
-MODEL_NAME   = f'xgb_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}'
+MODEL_NAME   = f'xgb_large_grid_t_{TRANSACTION_COST_BPS}_{WINDOW_MODE}'
 
 FREQUENCIES = [
     'Monthly',
-    'Quarterly',
-    'Yearly',
+    #'Quarterly',
+    #'Yearly',
 ]
 
 # ----
