@@ -22,9 +22,6 @@
 % ----
 % Read Files
 % ----
-\newcommand{\changepointfile}{regime_changepoint_vix.csv}
-\newcommand{\hmmfile}{regime_hmm_gspc_monthly.csv}
-\newcommand{\wassersteinfile}{regime_wasserstein_gspc_vix_monthly.csv}
 \newcommand{\scatterfile}{data_finalized/scatterplot.txt}
 % Monthly p_crisis of the three detectors (final_data_prep.ipynb)
 \newcommand{\pcrisismonthlyfile}{data_finalized/figure_pcrisis_monthly.csv}
@@ -75,23 +72,7 @@
     ylabel={S\&P 500 cum.\ log return},
     grid=none,
 }}
-% One panel of the stacked regime figure: p_crisis of one detector.
-% #1 = regime file, #2 = y label (detector), #3 = axis options (position,
-% x tick labels).  Inside a tikzpicture; panels of height \regimepanelheight
-% placed at multiples of it touch.  The y range is padded slightly so the
-% 0 and 1 labels of neighbouring panels do not collide.
 \newcommand{\regimepanelheight}{3cm}
-\newcommand{\regimepanel}[3]{%
-    \renewcommand{\crisisymin}{-0.06}%
-    \renewcommand{\crisisymax}{1.06}%
-    \begin{axis}[timechart, scale only axis, width=0.88\textwidth, height=\regimepanelheight,
-                 ymin=-0.06, ymax=1.06, ytick={0,0.5,1}, ylabel={#2}, axis on top,
-                 ymajorgrids=false, #3]     % the grid would cover the threshold line
-        \crises
-        \addplot[forget plot, red, dashed] coordinates {(1998-01-01,0.5) (2025-12-31,0.5)};
-        \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {#1};
-    \end{axis}%
-}
 % One panel of the monthly stacked figure: #1 = column of \pcrisismonthlyfile,
 % #2 = y label, #3 = axis options.  Step line: the value of the first trading
 % day of a month is held until the next month.
@@ -356,65 +337,6 @@ rule. So MVO and HRP switch exactly as the paper would classify
 
 \subsection{Changepoint Detection}
 Methodology and calculation 1:1 to the paper
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}
-        \begin{axis}[pcrisis]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\changepointfile};
-            \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
-        \end{axis}
-    \end{tikzpicture}
-    \caption{Changepoint detection (VIX): crisis probability $p_{\mathrm{crisis}}$.}
-    \label{fig:pcrisis_changepoint}
-\end{figure}
-
-
-\subsection{HMM}
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}
-        \begin{axis}[pcrisis]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\hmmfile};
-            \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
-        \end{axis}
-    \end{tikzpicture}
-    \caption{Hidden Markov Model (S\&P 500): crisis probability $p_{\mathrm{crisis}}$.}
-    \label{fig:pcrisis_hmm}
-\end{figure}
-
-
-\subsection{Clustering}
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}
-        \begin{axis}[pcrisis]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {\wassersteinfile};
-            \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
-        \end{axis}
-    \end{tikzpicture}
-    \caption{Clustering (Wasserstein k-means, S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$.}
-    \label{fig:pcrisis_wasserstein}
-\end{figure}
-
-
-\subsection{Regimes vs.\ S\&P 500}
-
-\begin{figure}[htbp]
-    \centering
-    \begin{tikzpicture}
-        \regimepanel{\changepointfile}{Changepoint}{at={(0,0)}, xticklabel style={opacity=0}}
-        \regimepanel{\hmmfile}{HMM}{at={(0,-\regimepanelheight)}, xticklabel style={opacity=0}}
-        \regimepanel{\wassersteinfile}{Clustering}{at={(0,-2*\regimepanelheight)}}
-    \end{tikzpicture}
-    \caption{Crisis probability $p_{\mathrm{crisis}}$ of the three regime detectors: changepoint detection (VIX, top), Hidden Markov Model (S\&P 500, middle) and clustering (Wasserstein k-means, S\&P 500 and VIX, bottom). Dashed: 0.5 threshold; grey shading: crisis periods; red lines: peak, trough and recovery.}
-    \label{fig:pcrisis_sp}
-\end{figure}
 
 
 \subsection{Monthly Crisis Probability}

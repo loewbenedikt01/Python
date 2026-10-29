@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  29 OCT 2026 19:47
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  29 OCT 2026 19:53
  system commands enabled.
 **c:/Users/benel/Coding/Python/Paper/_latex/paper
 (c:/Users/benel/Coding/Python/Paper/_latex/paper.tex
@@ -488,22 +488,22 @@ Package: iftex 2024/12/12 v1.0g TeX engine tests
 ) (./paper.aux)
 \openout1 = paper.aux
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 164.
-LaTeX Font Info:    ... okay on input line 164.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 145.
+LaTeX Font Info:    ... okay on input line 145.
 
 Package fontspec Info: 
 (fontspec)             Adjusting the maths setup (use [no-math] to avoid
@@ -511,56 +511,56 @@ Package fontspec Info:
 
 \symlegacymaths=\mathgroup4
 LaTeX Font Info:    Overwriting symbol font `legacymaths' in version `bold'
-(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 164.
-LaTeX Font Info:    Redeclaring math accent \acute on input line 164.
-LaTeX Font Info:    Redeclaring math accent \grave on input line 164.
-LaTeX Font Info:    Redeclaring math accent \ddot on input line 164.
-LaTeX Font Info:    Redeclaring math accent \tilde on input line 164.
-LaTeX Font Info:    Redeclaring math accent \bar on input line 164.
-LaTeX Font Info:    Redeclaring math accent \breve on input line 164.
-LaTeX Font Info:    Redeclaring math accent \check on input line 164.
-LaTeX Font Info:    Redeclaring math accent \hat on input line 164.
-LaTeX Font Info:    Redeclaring math accent \dot on input line 164.
-LaTeX Font Info:    Redeclaring math accent \mathring on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Delta on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Theta on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Xi on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Pi on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Phi on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Psi on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \Omega on input line 164.
-LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 164.
-LaTeX Font Info:    Redeclaring symbol font `operators' on input line 164.
+(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 145.
+LaTeX Font Info:    Redeclaring math accent \acute on input line 145.
+LaTeX Font Info:    Redeclaring math accent \grave on input line 145.
+LaTeX Font Info:    Redeclaring math accent \ddot on input line 145.
+LaTeX Font Info:    Redeclaring math accent \tilde on input line 145.
+LaTeX Font Info:    Redeclaring math accent \bar on input line 145.
+LaTeX Font Info:    Redeclaring math accent \breve on input line 145.
+LaTeX Font Info:    Redeclaring math accent \check on input line 145.
+LaTeX Font Info:    Redeclaring math accent \hat on input line 145.
+LaTeX Font Info:    Redeclaring math accent \dot on input line 145.
+LaTeX Font Info:    Redeclaring math accent \mathring on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Delta on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Theta on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Xi on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Pi on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Phi on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Psi on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \Omega on input line 145.
+LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 145.
+LaTeX Font Info:    Redeclaring symbol font `operators' on input line 145.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `normal' on input line 164.
+(Font)              `operators' in the math version `normal' on input line 145.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmr/m/n --> TU/Arial(0)/m/n on input line 164.
+(Font)                  OT1/cmr/m/n --> TU/Arial(0)/m/n on input line 145.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `bold' on input line 164.
+(Font)              `operators' in the math version `bold' on input line 145.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmr/bx/n --> TU/Arial(0)/m/n on input line 164.
+(Font)                  OT1/cmr/bx/n --> TU/Arial(0)/m/n on input line 145.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  TU/Arial(0)/m/n --> TU/Arial(0)/m/n on input line 164.
+(Font)                  TU/Arial(0)/m/n --> TU/Arial(0)/m/n on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  OT1/cmr/m/it --> TU/Arial(0)/m/it on input line 164.
+(Font)                  OT1/cmr/m/it --> TU/Arial(0)/m/it on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  OT1/cmr/bx/n --> TU/Arial(0)/b/n on input line 164.
+(Font)                  OT1/cmr/bx/n --> TU/Arial(0)/b/n on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
-(Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 164.
+(Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
-(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 164.
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 145.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  TU/Arial(0)/m/n --> TU/Arial(0)/b/n on input line 164.
+(Font)                  TU/Arial(0)/m/n --> TU/Arial(0)/b/n on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/cmr/bx/it --> TU/Arial(0)/b/it on input line 164.
+(Font)                  OT1/cmr/bx/it --> TU/Arial(0)/b/it on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  OT1/cmss/bx/n --> TU/lmss/b/n on input line 164.
+(Font)                  OT1/cmss/bx/n --> TU/lmss/b/n on input line 145.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  OT1/cmtt/m/n --> TU/lmtt/b/n on input line 164.
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/b/n on input line 145.
  (c:/texlive/2026/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
 \scratchcounter=\count351
@@ -619,65 +619,46 @@ Package pgfplots notification 'compat/show suggested version=true': document has
 [1
 
 {c:/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}] [2]
-Overfull \hbox (1.07582pt too wide) in paragraph at lines 213--215
+Overfull \hbox (1.07582pt too wide) in paragraph at lines 194--196
 \TU/Arial(0)/m/n/12 de-liver risk-adjusted out-per-for-mance and draw-down re-silience across cri-sis episodes,
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 213--215
+Underfull \hbox (badness 10000) in paragraph at lines 194--196
 
  []
 
 [1] [2] [3] [4]
-Package pgfplots info on input line 363: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 363: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_changepoint_vix.csv}
-Package pgfplots info on input line 379: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 379: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_hmm_gspc_monthly.csv}
-Package pgfplots info on input line 395: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 395: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_wasserstein_gspc_vix_monthly.csv}
- [5] [6]
-Package pgfplots info on input line 411: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 411: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_changepoint_vix.csv}
-Package pgfplots info on input line 412: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 412: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_hmm_gspc_monthly.csv}
-Package pgfplots info on input line 413: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 413: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {regime_wasserstein_gspc_vix_monthly.csv}
-Package pgfplots info on input line 427: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 427: Using 'lua backend=false' for axis: x coord trafo unsupported.
+Package pgfplots info on input line 349: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 349: Using 'lua backend=false' for axis: x coord trafo unsupported.
 PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
-Package pgfplots info on input line 428: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 428: Using 'lua backend=false' for axis: x coord trafo unsupported.
+Package pgfplots info on input line 350: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 350: Using 'lua backend=false' for axis: x coord trafo unsupported.
 PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
-Package pgfplots info on input line 429: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 429: Using 'lua backend=false' for axis: x coord trafo unsupported.
+Package pgfplots info on input line 351: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 351: Using 'lua backend=false' for axis: x coord trafo unsupported.
 PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
- [7] [8] [9]
+ [5]
 PGFPlots: reading {data_finalized/table_1_crisis_overview.csv}
 
-Underfull \hbox (badness 1009) in paragraph at lines 479--479
+Underfull \hbox (badness 1009) in paragraph at lines 401--401
 []\TU/Arial(0)/m/n/12 Ta-ble 2: Full-period per-for-mance 1998--2025; base-lines, monthly re-bal-anc-ing.
  []
 
 PGFPlots: reading {data_finalized/table_2_full_period.csv}
 PGFPlots: reading {data_finalized/table_3_crisis_average.csv}
 PGFPlots: reading {data_finalized/table_4_detectors.csv}
-[10] [11] [12]
-Package pgfplots info on input line 608: Using 'lua backend=false' for plot 0 (type 'pgfplothandlerdiscard'): point meta choice does not support LUA.
+[6] [7] [8] [9]
+Package pgfplots info on input line 530: Using 'lua backend=false' for plot 0 (type 'pgfplothandlerdiscard'): point meta choice does not support LUA.
 PGFPlots: reading {data_finalized/scatterplot.txt}
-Package pgfplots info on input line 619: Using 'lua backend=false' for plot 1 (type 'pgfplothandlerdiscard'): LUA does not support 'visualization depends on' (yet).
+Package pgfplots info on input line 541: Using 'lua backend=false' for plot 1 (type 'pgfplothandlerdiscard'): LUA does not support 'visualization depends on' (yet).
 PGFPlots: reading {data_finalized/scatterplot.txt}
- [13]
-Underfull \hbox (badness 10000) in paragraph at lines 638--642
+ [10]
+Underfull \hbox (badness 10000) in paragraph at lines 560--564
 
  []
 
-[14] (./paper.aux)
+[11] (./paper.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
@@ -689,19 +670,19 @@ LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
 )
 
 Here is how much of LuaTeX's memory you used:
- 27747 strings out of 475900
- 244156,4101490 words of node,token memory allocated
+ 27656 strings out of 475900
+ 156261,1648299 words of node,token memory allocated
  500 words of node memory still in use:
    6 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 1 glyph, 8 attribute, 53 glue_spec, 8 attribute_list, 2 write nodes
-   avail lists: 1:2,2:37214,3:26688,4:500,5:73,6:34,7:9102,8:34,9:992,10:18,11:419
- 49620 multiletter control sequences out of 65536+600000
+   avail lists: 2:11334,3:6716,4:344,5:74,6:34,7:11741,8:34,9:1321,10:18,11:468
+ 49553 multiletter control sequences out of 65536+600000
  69 fonts using 17713631 bytes
- 99i,19n,113p,1083b,2344s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 99i,19n,113p,1080b,2344s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <c:/Windows/Fonts/ARIALNI.TTF><c:/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmmono12-regular.otf><c:/Windows/Fonts/arial.ttf><c:/Windows/Fonts/arialbd.ttf><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
-Output written on paper.pdf (16 pages, 311565 bytes).
+Output written on paper.pdf (13 pages, 204370 bytes).
 
-PDF statistics: 122 PDF objects out of 1000 (max. 8388607)
- 82 compressed objects within 1 object stream
+PDF statistics: 113 PDF objects out of 1000 (max. 8388607)
+ 76 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 1048576)
  16 words of extra memory for PDF output out of 10000 (max. 100000000)
 
