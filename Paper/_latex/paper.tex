@@ -9,6 +9,7 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepgfplotslibrary{dateplot}
+\usepgfplotslibrary{groupplots}
 \usepackage{pgfplotstable}
 \usepackage{booktabs}
 \usepackage{placeins}   % \FloatBarrier: keep tables and figures in source order
@@ -22,20 +23,36 @@
 % ----
 % Read Files
 % ----
-\newcommand{\scatterfile}{data_finalized/scatterplot.txt}
+% Crisis excess return vs. MCap monthly, 19 portfolios (final_data_prep.ipynb)
+\newcommand{\scatterfile}{data_finalized/figure_scatter_frequency.csv}
 % Monthly p_crisis of the three detectors (final_data_prep.ipynb)
 \newcommand{\pcrisismonthlyfile}{data_finalized/figure_pcrisis_monthly.csv}
+% Daily value of the seven monthly HRP and LSTM portfolios (final_data_prep.ipynb)
+\newcommand{\valuefile}{data_finalized/figure_value_hrp_lstm.csv}
+% Cumulative log return of MCap and the seven LSTM portfolios per crisis window,
+% one file per crisis: <prefix>1.csv ... <prefix>7.csv (final_data_prep.ipynb)
+\newcommand{\crisespanelfile}{data_finalized/figure_crises_lstm_c}
 % Tables (final_data_prep.ipynb)
 \newcommand{\tableoverviewfile}{data_finalized/table_1_crisis_overview.csv}
 \newcommand{\tablefullperiodfile}{data_finalized/table_2_full_period.csv}
 \newcommand{\tablecrisisavgfile}{data_finalized/table_3_crisis_average.csv}
 \newcommand{\tabledetectorsfile}{data_finalized/table_4_detectors.csv}
+\newcommand{\tabledetectorinfluencefile}{data_finalized/table_6_detector_influence.csv}
 
 % Model family colours (Okabe-Ito, colour-blind safe); use the same in all charts
 \definecolor{famBenchmark}{RGB}{110,110,110}   % market_cap
 \definecolor{famSimple}{RGB}{230,159,0}        % equal_weight, mvo
 \definecolor{famClassical}{RGB}{0,158,115}          % hrp
 \definecolor{famML}{RGB}{0,114,178}            % xgb, rf, lstm
+% One colour per model (Okabe-Ito, colour-blind safe), for charts that show
+% every model separately
+\definecolor{modMCap}{RGB}{110,110,110}
+\definecolor{modEqual}{RGB}{230,159,0}       % 1/N: orange
+\definecolor{modHRP}{RGB}{0,158,115}         % bluish green
+\definecolor{modMVO}{RGB}{213,94,0}          % vermillion
+\definecolor{modLSTM}{RGB}{0,114,178}        % blue
+\definecolor{modRF}{RGB}{86,180,233}         % sky blue
+\definecolor{modXGB}{RGB}{204,121,167}       % reddish purple
 % Label anchor opposite to the side the label should sit on (label_pos = west -> anchor east)
 \pgfkeys{/labelanchor/.cd, west/.initial=east, east/.initial=west,
          north/.initial=south, south/.initial=north}
@@ -88,6 +105,77 @@
     \end{axis}%
 }
 
+% Regime portfolio colours: one Okabe-Ito hue per portfolio (colour-blind safe),
+% the three cash and the three alternative hues far apart from each other;
+% cash also dashed, alternative solid.  The same in every chart.
+\definecolor{regBase}{RGB}{0,0,0}
+\definecolor{regCPcash}{RGB}{230,159,0}        % changepoint cash: orange
+\definecolor{regCLcash}{RGB}{86,180,233}       % clustering cash: sky blue
+\definecolor{regHMMcash}{RGB}{204,121,167}     % HMM cash: reddish purple
+\definecolor{regCP}{RGB}{213,94,0}             % changepoint alternative: vermillion
+\definecolor{regCL}{RGB}{0,114,178}            % clustering alternative: blue
+\definecolor{regHMM}{RGB}{0,158,115}           % HMM alternative: bluish green
+\pgfplotsset{
+    regbase/.style={regBase, line width=0.6pt},
+    regcash/.style={#1, line width=0.6pt, dash pattern=on 2.5pt off 1pt},
+    regalt/.style={#1, line width=0.6pt},
+}
+
+% One panel of the stacked value figure: the seven monthly portfolios of one
+% model.  #1 = column prefix in \valuefile (hrp, lstm), #2 = y label,
+% #3 = axis options (position, legend, x tick labels), #4 = extra content
+% (e.g. \crisislabels).  Log scale, value of 1 invested at the start.  Crises:
+% shading and the trough line only.
+\newcommand{\valuepanelheight}{4.5cm}
+\newcommand{\valuepanel}[4]{%
+    \renewcommand{\crisisymin}{0.7}%
+    \renewcommand{\crisisymax}{25}%
+    \begin{axis}[timechart, scale only axis, width=0.88\textwidth, height=\valuepanelheight,
+                 ymode=log, ymin=0.7, ymax=25, ytick={1,2,5,10,20}, yticklabels={1,2,5,10,20},
+                 ylabel={#2}, axis on top, ymajorgrids=false, clip mode=individual, #3]
+        \crisesshade
+        \crisislist\crisistrough
+        #4
+        % legend order (4 columns): Baseline, cash x 3 / empty, alternative x 3;
+        % the baseline is drawn last so it stays visible on top
+        \addlegendimage{regbase}
+        \addplot[regcash=regCPcash]  table[x=date, y=#1_changepoint_cash] {\valuefile};
+        \addplot[regcash=regCLcash]  table[x=date, y=#1_clustering_cash]  {\valuefile};
+        \addplot[regcash=regHMMcash] table[x=date, y=#1_hmm_cash]         {\valuefile};
+        \addlegendimage{empty legend}
+        \addplot[regalt=regCP]       table[x=date, y=#1_changepoint_alt]  {\valuefile};
+        \addplot[regalt=regCL]       table[x=date, y=#1_clustering_alt]   {\valuefile};
+        \addplot[regalt=regHMM]      table[x=date, y=#1_hmm_alt]          {\valuefile};
+        \addplot[regbase, forget plot] table[x=date, y=#1_baseline]       {\valuefile};
+    \end{axis}%
+}
+
+% Crisis panels (4 x 2 groupplot): full calendar months around one crisis,
+% cumulative log return relative to the S&P peak (weekly points); one file per
+% crisis (\crisespanelfile<k>.csv), so nothing has to be filtered.
+\newcommand{\shortmonth}[1]{\ifcase#1\or Jan\or Feb\or Mar\or Apr\or May\or Jun\or Jul\or Aug\or Sep\or Oct\or Nov\or Dec\fi}
+% #1 = crisis number, #2 = title, #3 = 1st of the peak month, #4 = peak,
+% #5 = trough, #6 = even, #7 = last day of the even month (dates).
+% Inside a groupplot.  Light grey shading peak -> even; lines: MCap (thin
+% grey), the six regime variants (colours as \valuepanel), the LSTM baseline
+% (thick black, drawn last); dashed vertical line at the S&P trough.
+\newcommand{\crisispanel}[7]{%
+    \nextgroupplot[title={#2}, date coordinates in=x, xmin=#3, xmax=#7, xtick={#4,#5,#6},
+                   xticklabel={\shortmonth{\month}~\year}, table/col sep=comma,
+                   every axis plot/.append style={mark=none}]
+        \fill[gray!15] ({axis cs:#4,0} |- {rel axis cs:0,0}) rectangle ({axis cs:#6,0} |- {rel axis cs:0,1});
+        \addplot[gray!60, line width=0.5pt]  table[x=date, y=mcap]                  {\crisespanelfile#1.csv};
+        \addplot[regcash=regCPcash]          table[x=date, y=lstm_changepoint_cash] {\crisespanelfile#1.csv};
+        \addplot[regcash=regCLcash]          table[x=date, y=lstm_clustering_cash]  {\crisespanelfile#1.csv};
+        \addplot[regcash=regHMMcash]         table[x=date, y=lstm_hmm_cash]         {\crisespanelfile#1.csv};
+        \addplot[regalt=regCP]               table[x=date, y=lstm_changepoint_alt]  {\crisespanelfile#1.csv};
+        \addplot[regalt=regCL]               table[x=date, y=lstm_clustering_alt]   {\crisespanelfile#1.csv};
+        \addplot[regalt=regHMM]              table[x=date, y=lstm_hmm_alt]          {\crisespanelfile#1.csv};
+        \addplot[black, line width=1.1pt]    table[x=date, y=lstm_baseline]         {\crisespanelfile#1.csv};
+        \draw[black!60, dashed, line width=0.5pt]
+            ({axis cs:#5,0} |- {rel axis cs:0,0}) -- ({axis cs:#5,0} |- {rel axis cs:0,1});
+}
+
 % Portfolio value (NAV) line chart
 \pgfplotsset{navchart/.style={
     timechart,
@@ -126,6 +214,18 @@
     #1{2022-01-03}{2022-10-12}{2024-01-19}% C6
     #1{2025-02-19}{2025-04-08}{2025-06-27}% C7
 }
+% Trough line only, and the labels C1 ... C7 above the axis at the trough
+\newcommand{\crisistrough}[3]{%
+    \addplot[forget plot, \crisislinecolor, line width=0.4pt, mark=none] coordinates {(#2,\crisisymin) (#2,\crisisymax)};
+}
+\newcounter{crisisno}
+\newcommand{\crisislabel}[3]{%
+    \stepcounter{crisisno}%
+    \edef\crisislabelnode{\noexpand\node[anchor=south, inner sep=1.5pt, font=\noexpand\scriptsize]
+        at (axis cs:#2,\crisisymax) {C\arabic{crisisno}};}%
+    \crisislabelnode
+}
+\newcommand{\crisislabels}{\setcounter{crisisno}{0}\crisislist\crisislabel}
 \newcommand{\crises}{\crisislist\crisis}
 \newcommand{\crisesshade}{\crisislist\crisisshade}
 \newcommand{\criseslines}{\crisislist\crisismarks}
@@ -486,6 +586,98 @@ Methodology and calculation 1:1 to the paper
     ]{\detectors}
 \end{table}
 
+\begin{table}[htbp]
+    \centering
+    \caption{Detector influence: average over HRP, MVO, LSTM, RF and XGB, monthly rebalancing. Baseline: without regime detection. Cash: T-bills while the detector signals a crisis. Alternative: minimum variance (HRP, MVO) or HRP (LSTM, RF, XGB) while the detector signals a crisis. Each value is first averaged over the seven crises per model, then over the five models, all with equal weight. Cumulative return over the fixed S\&P~500 windows peak to trough, trough to recovery and peak to recovery (full crisis); maximum drawdown and Ulcer index over the full crisis. Sharpe ratios pooled per model, then averaged over the five models: in crisis over the daily returns of all seven full crises together, outside crisis over all other trading days 1998--2025; annualised, in excess of the T-bill rate. Crisis Sharpe ratios pool the daily returns of all seven crises, so they are weighted by crisis length (the Dotcom and Financial crises account for about 77\% of crisis days); all other columns weight each crisis equally.}
+    \label{tab:detector_influence}
+    \vspace{4pt}
+    % cells stored as text (-29.8%, 0.02): read with % as a normal character, printed as they are
+    \catcode`\%=12 \pgfplotstableread[col sep=comma]{\tabledetectorinfluencefile}\influence \catcode`\%=14
+    \newcommand{\diname}[2]{\textbf{\begin{tabular}[b]{@{}c@{}}#1\\#2\end{tabular}}}
+    \footnotesize
+    \setlength{\tabcolsep}{4pt}
+    \pgfplotstabletypeset[
+        every head row/.style={
+            before row={\toprule & \multicolumn{3}{c}{\textbf{Cumulative Return}} & & & \multicolumn{2}{c}{\textbf{Sharpe Ratio}}\\
+                        \cmidrule(lr){2-4} \cmidrule(lr){7-8}},
+            after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        % 0 Baseline, 1-2 Changepoint, 3-4 Clustering, 5-6 HMM
+        every row no 0/.style={after row=\midrule},
+        every row no 2/.style={after row=\midrule},
+        every row no 4/.style={after row=\midrule},
+        string type, column type=c,
+        columns/strategy/.style={column name=\textbf{Strategy}, column type=l},
+        columns/ret_ptt/.style={column name=\diname{Peak to}{Trough}},
+        columns/ret_ttp/.style={column name=\diname{Trough to}{Recovery}},
+        columns/ret_full/.style={column name=\diname{Full}{Crisis}},
+        columns/max_dd/.style={column name=\diname{Max.}{Drawdown}},
+        columns/ulcer/.style={column name=\diname{Ulcer}{Index}},
+        columns/sharpe_crisis/.style={column name=\diname{In}{Crisis}},
+        columns/sharpe_outside/.style={column name=\diname{Outside}{Crisis}},
+    ]{\influence}
+\end{table}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}
+        \renewcommand{\crisisshadecolor}{gray!15}%
+        \renewcommand{\crisislinecolor}{black!45}%
+        \valuepanel{hrp}{HRP}{at={(0,0)}, xticklabel style={opacity=0},
+            legend columns=4, legend cell align=left,
+            legend style={at={(0.5,1.12)}, anchor=south, font=\footnotesize, draw=none,
+                          /tikz/every even column/.append style={column sep=6pt}},
+            legend entries={Baseline, Changepoint Cash, Clustering Cash, HMM Cash,
+                            \mbox{}, Changepoint Alternative, Clustering Alternative, HMM Alternative}}
+            {\crisislabels}
+        \valuepanel{lstm}{LSTM}{at={(0,-\valuepanelheight)}}{}
+    \end{tikzpicture}
+    \caption{Value of 1 invested in January 1998 (log scale) of the seven monthly rebalanced portfolios of HRP (top) and LSTM (bottom): baseline without regime detection, and per detector the cash variant (dashed, T-bills while the detector signals a crisis) and the alternative variant (solid; HRP: minimum variance, LSTM: HRP while the detector signals a crisis). Same colours in both panels. Grey shading: crises C1--C7 from the S\&P~500 peak until it is back at the peak; vertical line: S\&P~500 trough.}
+    \label{fig:value_hrp_lstm}
+\end{figure}
+
+\begin{figure}[p]
+    \centering
+    \begin{tikzpicture}
+        \begin{groupplot}[
+            group style={group size=2 by 4, horizontal sep=1.4cm, vertical sep=1.9cm,
+                         ylabels at=edge left},
+            width=0.45\textwidth, height=3.7cm, scale only axis=false,
+            ylabel={Cum.\ log return},
+            title style={font=\small\bfseries, yshift=-2pt},
+            tick label style={font=\scriptsize},
+            xticklabel style={rotate=40, anchor=north east, inner sep=1pt},
+            yticklabel style={/pgf/number format/fixed},
+            grid=major, grid style={gray!20},
+        ]
+            % {k}{title}{1st of peak month}{peak}{trough}{even}{end of even month}
+            \crisispanel{1}{C1: Asian Crisis (1998)}{1998-07-01}{1998-07-17}{1998-08-31}{1998-11-23}{1998-11-30}
+            \crisispanel{2}{C2: Dotcom Crisis (2000)}{2000-03-01}{2000-03-24}{2002-10-09}{2007-05-30}{2007-05-31}
+            \crisispanel{3}{C3: Financial Crisis (2007)}{2007-10-01}{2007-10-09}{2009-03-09}{2013-03-28}{2013-03-31}
+            \crisispanel{4}{C4: Monetary Policy Shock (2018)}{2018-09-01}{2018-09-20}{2018-12-24}{2019-04-23}{2019-04-30}
+            \crisispanel{5}{C5: COVID-19 Crisis (2020)}{2020-02-01}{2020-02-19}{2020-03-23}{2020-08-18}{2020-08-31}
+            \crisispanel{6}{C6: Inflation \& Rate Hikes (2022)}{2022-01-01}{2022-01-03}{2022-10-12}{2024-01-19}{2024-01-31}
+            \crisispanel{7}{C7: Trade Policy Shock (2025)}{2025-02-01}{2025-02-19}{2025-04-08}{2025-06-27}{2025-06-30}
+            % eighth slot: the legend
+            \nextgroupplot[hide axis, xmin=0, xmax=1, ymin=0, ymax=1, ylabel={},
+                           legend columns=2, legend cell align=left,
+                           legend style={at={(0.5,0.5)}, anchor=center, draw=none, font=\footnotesize,
+                                         row sep=2pt, /tikz/every even column/.append style={column sep=8pt}}]
+                \addlegendimage{black, line width=1.1pt}        \addlegendentry{LSTM Baseline}
+                \addlegendimage{gray!60, line width=0.5pt}      \addlegendentry{MCap}
+                \addlegendimage{regcash=regCPcash}              \addlegendentry{Changepoint Cash}
+                \addlegendimage{regalt=regCP}                   \addlegendentry{Changepoint Alternative}
+                \addlegendimage{regcash=regCLcash}              \addlegendentry{Clustering Cash}
+                \addlegendimage{regalt=regCL}                   \addlegendentry{Clustering Alternative}
+                \addlegendimage{regcash=regHMMcash}             \addlegendentry{HMM Cash}
+                \addlegendimage{regalt=regHMM}                  \addlegendentry{HMM Alternative}
+                \addlegendimage{black!60, dashed, line width=0.5pt} \addlegendentry{S\&P~500 trough}
+        \end{groupplot}
+    \end{tikzpicture}
+    \caption{Cumulative log return of the seven monthly rebalanced LSTM portfolios around each crisis, relative to the S\&P~500 peak (set to 0), weekly values; each panel spans the full calendar months from the month of the peak to the month in which the S\&P~500 is back at the peak, the crisis itself (peak to recovery) shaded light grey: baseline without regime detection (thick black), and per detector the cash variant (dashed, T-bills while the detector signals a crisis) and the alternative variant (solid, HRP while the detector signals a crisis); market-cap benchmark (MCap, thin grey) for orientation. Dashed vertical line: S\&P~500 trough, separating peak to trough and trough to recovery. Date ticks: peak, trough, recovery. Each panel has its own y scale, as the crises differ greatly in depth and length.}
+    \label{fig:crises_lstm}
+\end{figure}
+
 \FloatBarrier
 
 \subsection{Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}
@@ -494,54 +686,74 @@ Methodology and calculation 1:1 to the paper
     \centering
     \begin{tikzpicture}
         \begin{axis}[
-            width=0.8\textwidth,
+            width=\textwidth,
             axis equal image,      % same scale on both axes: the net line is at 45 degrees
-            xmin=-3, xmax=15, ymin=-6, ymax=7,
-            xtick={-2,0,...,14}, ytick={-6,-4,...,6},
-            xlabel={Excess return vs. MCap, peak -> trough (\%)},
-            ylabel={Excess return vs. MCap, trough -> peak (\%)},
+            xmin=-4, xmax=13, ymin=-5.5, ymax=6.5,
+            xtick={-4,-2,...,12}, ytick={-4,-2,...,6},
+            xlabel={Excess return vs.\ MCap monthly, peak to trough (\%)},
+            ylabel={Excess return vs.\ MCap monthly, trough to recovery (\%)},
             grid=major, grid style={gray!20},
             tick label style={font=\small},
             table/col sep=comma,
             % dashed zero lines = benchmark level
             extra x ticks={0}, extra y ticks={0},
             extra tick style={grid=major, grid style={gray, dashed}, tick label style={opacity=0}},
-            % legend below the plot, two columns
-            legend style={at={(0.5,-0.17)}, anchor=north, legend columns=2,
-                          font=\footnotesize, draw=gray!50, /tikz/every even column/.append style={column sep=1em}},
+            % legend below the plot: models (colour) / rebalancing (marker)
+            legend style={at={(0.5,-0.14)}, anchor=north, legend columns=7,
+                          font=\footnotesize, draw=gray!50,
+                          /tikz/every even column/.append style={column sep=0.8em}},
             legend cell align=left,
+            % one colour per model (key column), marker per frequency (plot)
+            scatter/classes={
+                mcap={modMCap}, equal={modEqual}, hrp={modHRP}, mvo={modMVO},
+                lstm={modLSTM}, rf={modRF}, xgb={modXGB}},
         ]
-            % net ~ 0 over the whole crisis: ptt + ttp = 0 (drawn over the visible range x = -3 .. 6)
-            \addplot[forget plot, no marks, black!60, densely dotted, thick, domain=-3:6, samples=2]
-                {-x} node[pos=0.78, sloped, above, font=\footnotesize] {net $\approx 0$};
-            \node[font=\footnotesize, black!60, anchor=south west] at (axis cs:-2.8,-5.8) {net loss};
-            \node[font=\footnotesize, black!60, anchor=north east] at (axis cs:14.8,6.8) {net gain};
-            % points coloured by model family (column family)
-            \addplot[
-                scatter, only marks, mark size=2pt,
-                point meta=explicit symbolic,
-                scatter/classes={
-                    benchmark={mark=*, famBenchmark},
-                    simple={mark=*, famSimple},
-                    classical={mark=*, famClassical},
-                    ml={mark=*, famML}},
-            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
-                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix},
-                    meta=family] {\scatterfile};
-            \legend{Benchmark, {Simple (Equal Weight)}, {Classical (MVO, HRP)}, {ML (XGB, RF, LSTM)}}
-            % model names (separate plot: custom node text switches off the class colours);
-            % label side per point from column label_pos (north / south / east / west)
+            % net ~ 0 over the whole crisis: ptt + ttp = 0 (over the visible range)
+            \addplot[forget plot, no marks, black!60, densely dotted, thick, domain=-4:5.5, samples=2]
+                {-x} node[pos=0.12, sloped, above, font=\footnotesize] {net $\approx 0$};
+            \node[font=\footnotesize, black!60, anchor=south west] at (axis cs:-3.9,-5.4) {net loss};
+            \node[font=\footnotesize, black!60, anchor=north east] at (axis cs:12.9,6.4) {net gain};
+            % arrows monthly -> quarterly -> yearly of the same model; row 0 (MCap,
+            % monthly only, quarterly / yearly nan) is skipped
+            \addplot[forget plot, gray!70, -stealth, line width=0.6pt, skip coords between index={0}{1},
+                     quiver={u=\thisrow{ptt_quarterly}-\thisrow{ptt_monthly},
+                             v=\thisrow{ttp_quarterly}-\thisrow{ttp_monthly},
+                             every arrow/.append style={shorten <=2.5pt, shorten >=2.5pt}}]
+                table[x=ptt_monthly, y=ttp_monthly] {\scatterfile};
+            \addplot[forget plot, gray!70, -stealth, line width=0.6pt, skip coords between index={0}{1},
+                     quiver={u=\thisrow{ptt_yearly}-\thisrow{ptt_quarterly},
+                             v=\thisrow{ttp_yearly}-\thisrow{ttp_quarterly},
+                             every arrow/.append style={shorten <=2.5pt, shorten >=2.5pt}}]
+                table[x=ptt_quarterly, y=ttp_quarterly] {\scatterfile};
+            % points: monthly circle, quarterly square, yearly triangle
+            \addplot[forget plot, scatter, only marks, mark=*, mark size=2.3pt, point meta=explicit symbolic]
+                table[x=ptt_monthly, y=ttp_monthly, meta=key] {\scatterfile};
+            \addplot[forget plot, scatter, only marks, mark=square*, mark size=2pt, point meta=explicit symbolic]
+                table[x=ptt_quarterly, y=ttp_quarterly, meta=key] {\scatterfile};
+            \addplot[forget plot, scatter, only marks, mark=triangle*, mark size=2.6pt, point meta=explicit symbolic]
+                table[x=ptt_yearly, y=ttp_yearly, meta=key] {\scatterfile};
+            % model names at the monthly point; side from column label_pos
             \addplot[
                 forget plot, only marks, mark=none,
                 visualization depends on={value \thisrow{model} \as \modelname},
                 visualization depends on={value \thisrow{label_pos} \as \labelpos},
                 nodes near coords={\expandafter\detokenize\expandafter{\modelname}},
-                nodes near coords style={font=\footnotesize, anchor=\labelanchor{\labelpos}},
-            ] table[x expr=100*\thisrow{avg_crisis_excess_return_ptt_fix},
-                    y expr=100*\thisrow{avg_crisis_excess_return_ttp_fix}] {\scatterfile};
+                nodes near coords style={font=\footnotesize, anchor=\labelanchor{\labelpos}, inner sep=3pt},
+            ] table[x=ptt_monthly, y=ttp_monthly] {\scatterfile};
+            % legend
+            \addlegendimage{only marks, mark=*, modMCap}  \addlegendentry{MCap}
+            \addlegendimage{only marks, mark=*, modEqual} \addlegendentry{1/N}
+            \addlegendimage{only marks, mark=*, modHRP}   \addlegendentry{HRP}
+            \addlegendimage{only marks, mark=*, modMVO}   \addlegendentry{MVO}
+            \addlegendimage{only marks, mark=*, modLSTM}  \addlegendentry{LSTM}
+            \addlegendimage{only marks, mark=*, modRF}    \addlegendentry{RF}
+            \addlegendimage{only marks, mark=*, modXGB}   \addlegendentry{XGB}
+            \addlegendimage{only marks, mark=*, black}            \addlegendentry{Monthly}
+            \addlegendimage{only marks, mark=square*, black}      \addlegendentry{Quarterly}
+            \addlegendimage{only marks, mark=triangle*, black}    \addlegendentry{Yearly}
         \end{axis}
     \end{tikzpicture}
-    \caption{Average crisis excess return over the benchmark per model: peak to trough ($x$) vs.\ trough to recovery ($y$). The dotted line marks $x + y = 0$: models above it gain over the whole crisis (peak to recovery), models below lose. The line is approximate, since the two phases compound, $(1+x)(1+y)-1 \ne x+y$, rather than add.}
+    \caption{Average crisis excess return over the market-cap benchmark (MCap, monthly rebalancing) per model and rebalancing frequency: peak to trough ($x$) vs.\ trough to recovery ($y$), equal-weighted average over the seven crises, fixed S\&P~500 windows. 19 portfolios: MCap monthly (at the origin) and the baselines of 1/N, HRP, MVO, LSTM, RF and XGB at monthly (circle), quarterly (square) and yearly (triangle) rebalancing; arrows connect the same model from monthly to quarterly to yearly. Excess return $(1+R)/(1+R_{\mathrm{MCap}})-1$ per crisis and phase. The dotted line marks $x + y = 0$: portfolios above it gain over the whole crisis (peak to recovery), portfolios below lose. The line is approximate, since the two phases compound rather than add.}
     \label{fig:scatter_crisis_excess}
 \end{figure}
 \FloatBarrier
