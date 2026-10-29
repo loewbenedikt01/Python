@@ -25,21 +25,14 @@
 \newcommand{\changepointfile}{regime_changepoint_vix.csv}
 \newcommand{\hmmfile}{regime_hmm_gspc_monthly.csv}
 \newcommand{\wassersteinfile}{regime_wasserstein_gspc_vix_monthly.csv}
-\newcommand{\lstmvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_monthly_value.csv}
-\newcommand{\lstmbasevaluefile}{lstm_t_10_holdout_rank_monthly_monthly_value.csv}
-\newcommand{\lstmchangepointhrpvaluefile}{lstm_t_10_holdout_rank_changepoint_vix_hrp_monthly_monthly_value.csv}
-\newcommand{\lstmhmmvaluefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_monthly_value.csv}
-\newcommand{\lstmwassersteinvaluefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_monthly_value.csv}
-% Defensive holding periods of the regime runs (defensive_periods.py)
-\newcommand{\lstmchangepointdefensivefile}{lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_defensive.csv}
-\newcommand{\lstmhmmdefensivefile}{lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_defensive.csv}
-\newcommand{\lstmwassersteindefensivefile}{lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_defensive.csv}
 \newcommand{\scatterfile}{data_finalized/scatterplot.txt}
-\newcommand{\tableonefile}{data_finalized/table_1.txt}
-\newcommand{\tabletwofile}{data_finalized/table_2.txt}
-\newcommand{\tablethreefile}{data_finalized/table_3.txt}
-\newcommand{\tablefourfile}{data_finalized/table_4.txt}
-\newcommand{\tablecrisesfile}{data_finalized/table_2.csv}   % data_prep_finalized.ipynb, Table 2
+% Monthly p_crisis of the three detectors (final_data_prep.ipynb)
+\newcommand{\pcrisismonthlyfile}{data_finalized/figure_pcrisis_monthly.csv}
+% Tables (final_data_prep.ipynb)
+\newcommand{\tableoverviewfile}{data_finalized/table_1_crisis_overview.csv}
+\newcommand{\tablefullperiodfile}{data_finalized/table_2_full_period.csv}
+\newcommand{\tablecrisisavgfile}{data_finalized/table_3_crisis_average.csv}
+\newcommand{\tabledetectorsfile}{data_finalized/table_4_detectors.csv}
 
 % Model family colours (Okabe-Ito, colour-blind safe); use the same in all charts
 \definecolor{famBenchmark}{RGB}{110,110,110}   % market_cap
@@ -99,6 +92,20 @@
         \addplot[blue!70!black, line width=0.4pt] table[x=date, y=p_crisis] {#1};
     \end{axis}%
 }
+% One panel of the monthly stacked figure: #1 = column of \pcrisismonthlyfile,
+% #2 = y label, #3 = axis options.  Step line: the value of the first trading
+% day of a month is held until the next month.
+\newcommand{\pcrisispanel}[3]{%
+    \renewcommand{\crisisymin}{-0.06}%
+    \renewcommand{\crisisymax}{1.06}%
+    \begin{axis}[timechart, scale only axis, width=0.88\textwidth, height=\regimepanelheight,
+                 ymin=-0.06, ymax=1.06, ytick={0,0.5,1}, ylabel={#2}, axis on top,
+                 ymajorgrids=false, #3]
+        \crises
+        \addplot[forget plot, black!55, dashed, line width=0.4pt] coordinates {(1998-01-01,0.5) (2025-12-31,0.5)};
+        \addplot[const plot, blue!70!black, line width=0.6pt, mark=none] table[x=date, y=#1] {\pcrisismonthlyfile};
+    \end{axis}%
+}
 
 % Portfolio value (NAV) line chart
 \pgfplotsset{navchart/.style={
@@ -113,16 +120,19 @@
 % vertical red lines at peak, trough and even.
 % Vertical extent is \crisisymin to \crisisymax (set to the axis ymin/ymax).
 % \crisesshade and \criseslines draw the two parts separately, so other
-% layers (e.g. \defensive) can go between the shading and the lines.
+% layers can go between the shading and the lines.
+% Colours of the shading and the lines; renew them inside a figure to change one chart only.
 \newcommand{\crisisymin}{0}
 \newcommand{\crisisymax}{1}
+\newcommand{\crisisshadecolor}{gray!25}
+\newcommand{\crisislinecolor}{red}
 \newcommand{\crisisshade}[3]{%
-    \addplot[forget plot, draw=none, fill=gray!25] coordinates {(#1,\crisisymin) (#3,\crisisymin) (#3,\crisisymax) (#1,\crisisymax)} --cycle;
+    \addplot[forget plot, draw=none, fill=\crisisshadecolor] coordinates {(#1,\crisisymin) (#3,\crisisymin) (#3,\crisisymax) (#1,\crisisymax)} --cycle;
 }
 \newcommand{\crisismarks}[3]{%
-    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#1,\crisisymin) (#1,\crisisymax)};
-    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#2,\crisisymin) (#2,\crisisymax)};
-    \addplot[forget plot, red, line width=0.4pt, mark=none] coordinates {(#3,\crisisymin) (#3,\crisisymax)};
+    \addplot[forget plot, \crisislinecolor, line width=0.4pt, mark=none] coordinates {(#1,\crisisymin) (#1,\crisisymax)};
+    \addplot[forget plot, \crisislinecolor, line width=0.4pt, mark=none] coordinates {(#2,\crisisymin) (#2,\crisisymax)};
+    \addplot[forget plot, \crisislinecolor, line width=0.4pt, mark=none] coordinates {(#3,\crisisymin) (#3,\crisisymax)};
 }
 \newcommand{\crisis}[3]{\crisisshade{#1}{#2}{#3}\crisismarks{#1}{#2}{#3}}
 % #1 = macro applied to every crisis (peak, trough, even)
@@ -138,16 +148,6 @@
 \newcommand{\crises}{\crisislist\crisis}
 \newcommand{\crisesshade}{\crisislist\crisisshade}
 \newcommand{\criseslines}{\crisislist\crisismarks}
-
-% Defensive holding periods of a regime run (#1 = defensive file): light green,
-% semi-transparent so the grey crisis shading stays visible underneath.
-\newcommand{\defensive}[1]{%
-    \addplot[forget plot, draw=none, fill=green!45, fill opacity=0.5, const plot]
-        table[x=date, y expr=\thisrow{defensive}*\crisisymax] {#1} \closedcycle;
-}
-
-
-
 
 % ----
 % Calculations
@@ -217,7 +217,7 @@ Sub questions:\\
 1. How do MVO, HRP, XGB, RF and LSTM perform against market-cap weighted benchmarks, over the full sample 
 and within crisis episodes?\\
 2. Are the results robust to monthly, quarterly and yearly rebalancing?\\
-3. How accurately and how early do changepoint, HMM and Wasserstein detectors identify crisis episodes?\\
+3. How accurately and how early do changepoint, HMM and clustering detectors identify crisis episodes?\\
 4. Does moving to T-bills in detected crises improve each approach, and is any gain due to timing rather 
 than lower average equity exposure?\\
 5. Does a regime-switched combination (ML in calm, HRP in crisis) outperform each approach alone and a 
@@ -298,7 +298,7 @@ barely moves it back, because $\Gamma$ says crises persist.
 - It is made at the close of d−1 and stored on day d, the same one-day delay as the changepoint files.
 - MVO and HRP switch to min-variance when it exceeds 0.5. ML uses the value directly.
 
-\subsection{Wasserstein K-Means Clustering}
+\subsection{Clustering (Wasserstein K-Means)}
 Wasserstein k-means compares whole monthly return distributions. It sorts past months into two groups by shape, 
 then asks which group the latest month looks more like. $p_{\text{crisis}}$ is a relative distance to the two group centres, so 
 it is a score, not a model probability.
@@ -387,7 +387,7 @@ Methodology and calculation 1:1 to the paper
 \end{figure}
 
 
-\subsection{Wasserstein}
+\subsection{Clustering}
 
 \begin{figure}[htbp]
     \centering
@@ -398,7 +398,7 @@ Methodology and calculation 1:1 to the paper
             \draw[red, dashed] (rel axis cs:0,0.5) -- (rel axis cs:1,0.5);
         \end{axis}
     \end{tikzpicture}
-    \caption{Wasserstein clustering (S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$.}
+    \caption{Clustering (Wasserstein k-means, S\&P 500 and VIX): crisis probability $p_{\mathrm{crisis}}$.}
     \label{fig:pcrisis_wasserstein}
 \end{figure}
 
@@ -410,94 +410,160 @@ Methodology and calculation 1:1 to the paper
     \begin{tikzpicture}
         \regimepanel{\changepointfile}{Changepoint}{at={(0,0)}, xticklabel style={opacity=0}}
         \regimepanel{\hmmfile}{HMM}{at={(0,-\regimepanelheight)}, xticklabel style={opacity=0}}
-        \regimepanel{\wassersteinfile}{Wasserstein}{at={(0,-2*\regimepanelheight)}}
+        \regimepanel{\wassersteinfile}{Clustering}{at={(0,-2*\regimepanelheight)}}
     \end{tikzpicture}
-    \caption{Crisis probability $p_{\mathrm{crisis}}$ of the three regime detectors: changepoint detection (VIX, top), Hidden Markov Model (S\&P 500, middle) and Wasserstein clustering (S\&P 500 and VIX, bottom). Dashed: 0.5 threshold; grey shading: crisis periods; red lines: peak, trough and recovery.}
+    \caption{Crisis probability $p_{\mathrm{crisis}}$ of the three regime detectors: changepoint detection (VIX, top), Hidden Markov Model (S\&P 500, middle) and clustering (Wasserstein k-means, S\&P 500 and VIX, bottom). Dashed: 0.5 threshold; grey shading: crisis periods; red lines: peak, trough and recovery.}
     \label{fig:pcrisis_sp}
 \end{figure}
 
 
+\subsection{Monthly Crisis Probability}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}
+        \renewcommand{\crisisshadecolor}{gray!15}%
+        \renewcommand{\crisislinecolor}{black!45}%
+        \pcrisispanel{changepoint}{Changepoint}{at={(0,0)}, xticklabel style={opacity=0}}
+        \pcrisispanel{clustering}{Clustering}{at={(0,-\regimepanelheight)}, xticklabel style={opacity=0}}
+        \pcrisispanel{hmm}{HMM}{at={(0,-2*\regimepanelheight)}}
+    \end{tikzpicture}
+    \caption{Monthly crisis probability $p_{\mathrm{crisis}}$ of the three regime detectors: changepoint detection (VIX, top), clustering (Wasserstein k-means, S\&P 500 and VIX, middle) and Hidden Markov Model (S\&P 500, bottom). Value on the first trading day of each month, held until the next month, as read by the monthly rebalanced portfolios; it uses data up to the previous day. Dashed: 0.5 threshold, above which the portfolios switch to their crisis allocation. Grey shading: crisis periods from the S\&P~500 peak until it is back at the peak; vertical lines: peak, trough and recovery.}
+    \label{fig:pcrisis_monthly}
+\end{figure}
+
+
+\FloatBarrier
 \section{Portfolio Performance}
 
 \begin{table}[htbp]
     \centering
-    \caption{Full-period performance per model, sorted by Sharpe ratio.}
-    \label{tab:performance}
+    \caption{Crisis overview: duration and maximum drawdown (\%) within each crisis; baselines, monthly rebalancing. Trading Days: S\&P~500 trading days from the peak to the trough. Maximum drawdown: from the S\&P~500 peak until the S\&P~500 is back at that peak. GSPC: S\&P~500 price index.}
+    \label{tab:crisis_overview}
     \vspace{4pt}
-    % returns, volatility and drawdown stored as decimals: shown in %
+    % row 0 of the file = duration (days), shown in the header; drawdowns stored as text
+    % like -19.3%: read with % as a normal character, printed as they are
+    \catcode`\%=12 \pgfplotstableread[col sep=comma]{\tableoverviewfile}\overview \catcode`\%=14
+    \newcommand{\ovdays}[1]{\pgfplotstablegetelem{0}{#1}\of\overview\pgfplotsretval}
+    % crisis name over two lines, bold
+    \newcommand{\ovname}[2]{\textbf{\begin{tabular}[b]{@{}c@{}}#1\\#2\end{tabular}}}
+    \footnotesize
+    \setlength{\tabcolsep}{3pt}
     \pgfplotstabletypeset[
-        col sep=comma,
-        columns={model,cagr,volatility,sharpe,max_dd,turnover},
-        every head row/.style={before row=\toprule, after row=\midrule},
+        skip rows between index={0}{1},
+        every head row/.style={
+            before row=\toprule,
+            after row={\midrule
+                       Trading Days & \ovdays{C1} & \ovdays{C2} & \ovdays{C3} & \ovdays{C4}
+                       & \ovdays{C5} & \ovdays{C6} & \ovdays{C7}\\ \midrule
+                       \textbf{Strategy} & \multicolumn{7}{c}{\textbf{Maximum Drawdown}}\\ \midrule}},
         every last row/.style={after row=\bottomrule},
-        fixed, fixed zerofill,
-        columns/model/.style={string type, column name=Model, column type=l},
-        columns/cagr/.style={column name={CAGR (\%)}, multiply by=100, precision=2},
-        columns/volatility/.style={column name={Volatility (\%)}, multiply by=100, precision=2},
-        columns/sharpe/.style={column name=Sharpe, precision=3},
-        columns/max_dd/.style={column name={Max.\ DD (\%)}, multiply by=100, precision=2},
-        columns/turnover/.style={column name={\begin{tabular}{@{}c@{}}Turnover\\p.a.\ (\%)\end{tabular}}, multiply by=100, precision=2},
-    ]{\tableonefile}
+        % rows counted after the skip: 0 GSPC, 1 MCap, 2 1/N, 3 HRP, 4 MVO, 5 LSTM, ...
+        every row no 0/.style={after row=\midrule},             % GSPC | benchmarks
+        every row no 2/.style={after row=\midrule},             % 1/N | HRP
+        every row no 4/.style={after row=\midrule},             % MVO | LSTM
+        string type, column type=c,
+        columns/model/.style={column name={}, column type=l},
+        columns/C1/.style={column name=\ovname{Asian}{Crisis}},
+        columns/C2/.style={column name=\ovname{Dotcom}{Crisis}},
+        columns/C3/.style={column name=\ovname{Financial}{Crisis}},
+        columns/C4/.style={column name=\ovname{Monetary}{Policy Shock}},
+        columns/C5/.style={column name=\ovname{COVID-19}{Crisis}},
+        columns/C6/.style={column name=\ovname{Inflation \&}{Rate Hikes}},
+        columns/C7/.style={column name=\ovname{Trade Policy}{Shock}},
+    ]{\overview}
 \end{table}
 
 \begin{table}[htbp]
     \centering
-    \caption{Crisis profile of the baseline models, monthly rebalancing, equal-weighted across seven crises (C1--C7). PTT (peak to trough), TTP (trough to recovery) and Full: average excess return over MCap, $(1+r)/(1+r_{\text{MCap}}) - 1$. $\Delta$ Ulcer: difference in Ulcer index to MCap, in percentage points (crisis peak to next crisis peak). $\Delta$ Rec.: difference in trading days from the S\&P~500 peak until the portfolio regains its starting value (C2 excluded, as MCap did not recover before the GFC; weights rescaled over C1 and C3--C7). Negative $\Delta$ values indicate less pain / faster recovery than MCap, whereas for PTT, TTP and Full positive is better. Hits: crises in which the model's excess return in the phase was positive.}
-    \label{tab:crisis}
+    \caption{Full-period performance 1998--2025; baselines, monthly rebalancing. Sharpe ratio on excess returns over the 3-month T-bill, annualised. CAGR: compound annual growth rate. Cum.\ return: cumulative return over the period. Ulcer index: root mean square drawdown from the running high. Turnover p.a.: average annual turnover, without the initial purchase. GSPC: S\&P~500 price index (without dividends), held buy \& hold; the portfolios are total-return series.}
+    \label{tab:full_period}
     \vspace{4pt}
-    % excess returns and Ulcer change stored as decimals: shown in %
-    \small
+    % cells stored as text (-56.8%, 0.25): read with % as a normal character, printed as they are
+    \catcode`\%=12 \pgfplotstableread[col sep=comma]{\tablefullperiodfile}\fullperiod \catcode`\%=14
+    \newcommand{\fpname}[2]{\textbf{\begin{tabular}[b]{@{}c@{}}#1\\#2\end{tabular}}}
+    \footnotesize
     \setlength{\tabcolsep}{4pt}
     \pgfplotstabletypeset[
-        col sep=comma,
-        columns={model,ptt_excess,ttp_excess,full_excess,delta_ulcer,delta_recovery_days,hits_ptt,hits_ttp},
         every head row/.style={before row=\toprule, after row=\midrule},
         every last row/.style={after row=\bottomrule},
-        fixed, fixed zerofill,
-        empty cells with={--},
-        columns/model/.style={string type, column name=Model, column type=l},
-        columns/ptt_excess/.style={column name={PTT (\%)}, multiply by=100, precision=2},
-        columns/ttp_excess/.style={column name={TTP (\%)}, multiply by=100, precision=2},
-        columns/full_excess/.style={column name={Full (\%)}, multiply by=100, precision=2},
-        columns/delta_ulcer/.style={column name={$\Delta$ Ulcer (pp)}, multiply by=100, precision=2},
-        columns/delta_recovery_days/.style={column name={$\Delta$ Rec.\ (days)}, precision=0},
-        columns/hits_ptt/.style={string type, column name={Hits PTT}, column type=c},
-        columns/hits_ttp/.style={string type, column name={Hits TTP}, column type=c},
-    ]{\tabletwofile}
+        % 0 GSPC, 1 MCap, 2 1/N, 3 HRP, 4 MVO, 5 LSTM, ...
+        every row no 0/.style={after row=\midrule},             % GSPC | benchmarks
+        every row no 2/.style={after row=\midrule},             % 1/N | HRP
+        every row no 4/.style={after row=\midrule},             % MVO | LSTM
+        string type, column type=c,
+        columns/model/.style={column name=\textbf{Strategy}, column type=l},
+        columns/sharpe_ratio/.style={column name=\fpname{Sharpe}{Ratio}},
+        columns/cagr/.style={column name=\fpname{}{CAGR}},
+        columns/cum_return/.style={column name=\fpname{Cum.}{Return}},
+        columns/annual_volatility/.style={column name=\fpname{Annual}{Volatility}},
+        columns/max_drawdown/.style={column name=\fpname{Max.}{Drawdown}},
+        columns/ulcer_index/.style={column name=\fpname{Ulcer}{Index}},
+        columns/turnover_pa/.style={column name=\fpname{Turnover}{p.a.}},
+    ]{\fullperiod}
 \end{table}
 
 \begin{table}[htbp]
     \centering
-    \caption{Return (Ret.) and maximum drawdown (MDD) per crisis, in \%, monthly rebalancing, from the S\&P~500 peak until the S\&P~500 is back at that peak: C1 1998 (Russia/LTCM), C2 dot-com, C3 GFC, C4 monetary policy shock 2018, C5 COVID-19, C6 inflation and rate hikes 2022, C7 trade policy shock 2025. GSPC: S\&P~500 price index, its return is about zero by construction of the windows.}
-    \label{tab:crisis_returns}
+    \caption{Average crisis performance: equal-weighted average over the seven crises; baselines, monthly rebalancing. Fixed S\&P~500 windows: full crisis from the S\&P~500 peak until it is back at that peak, peak to trough, and trough to recovery (back at the peak). Max.\ drawdown and Ulcer index over the full crisis; cumulative return over each of the three windows. Recovery: trading days from the portfolio's own trough until it is back at its value on the S\&P~500 peak date, searched up to the next crisis peak; ≥: not recovered in at least one crisis (counted up to that cut-off, a lower bound); MCap and MVO did not recover from the Dotcom Crisis before the peak of the Financial Crisis (2007-10-09), so their Dotcom Crisis recovery is counted up to that date. GSPC: S\&P~500 price index; its full-crisis return is about zero by construction of the windows.}
+    \label{tab:crisis_average}
     \vspace{4pt}
-    % returns and drawdowns stored as decimals: shown in %
+    % cells stored as text (-31.9%, ≥377): read with % as a normal character, printed as they are
+    \catcode`\%=12 \pgfplotstableread[col sep=comma]{\tablecrisisavgfile}\crisisavg \catcode`\%=14
+    \newcommand{\caname}[2]{\textbf{\begin{tabular}[b]{@{}c@{}}#1\\#2\end{tabular}}}
     \footnotesize
-    \setlength{\tabcolsep}{1.8pt}
+    \setlength{\tabcolsep}{4pt}
     \pgfplotstabletypeset[
-        col sep=comma,
         every head row/.style={
-            before row={\toprule
-                & \multicolumn{2}{c}{C1} & \multicolumn{2}{c}{C2} & \multicolumn{2}{c}{C3} & \multicolumn{2}{c}{C4}
-                & \multicolumn{2}{c}{C5} & \multicolumn{2}{c}{C6} & \multicolumn{2}{c}{C7}\\
-                \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}
-                \cmidrule(lr){10-11}\cmidrule(lr){12-13}\cmidrule(lr){14-15}},
+            before row={\toprule & & & & \multicolumn{3}{c}{\textbf{Cumulative Return}}\\ \cmidrule(lr){5-7}},
             after row=\midrule},
         every last row/.style={after row=\bottomrule},
-        every row no 0/.style={after row=\midrule},           % GSPC above the models
-        fixed, fixed zerofill, precision=1,
-        ret/.style={column name=Ret., multiply by=100},
-        mdd/.style={column name=MDD, multiply by=100},
-        columns/model/.style={string type, column name=Model, column type=l},
-        columns/c1_full_return/.style=ret, columns/c1_full_max_dd/.style=mdd,
-        columns/c2_full_return/.style=ret, columns/c2_full_max_dd/.style=mdd,
-        columns/c3_full_return/.style=ret, columns/c3_full_max_dd/.style=mdd,
-        columns/c4_full_return/.style=ret, columns/c4_full_max_dd/.style=mdd,
-        columns/c5_full_return/.style=ret, columns/c5_full_max_dd/.style=mdd,
-        columns/c6_full_return/.style=ret, columns/c6_full_max_dd/.style=mdd,
-        columns/c7_full_return/.style=ret, columns/c7_full_max_dd/.style=mdd,
-    ]{\tablecrisesfile}
+        % 0 GSPC, 1 MCap, 2 1/N, 3 HRP, 4 MVO, 5 LSTM, ...
+        every row no 0/.style={after row=\midrule},             % GSPC | benchmarks
+        every row no 2/.style={after row=\midrule},             % 1/N | HRP
+        every row no 4/.style={after row=\midrule},             % MVO | LSTM
+        string type, column type=c,
+        columns/model/.style={column name=\textbf{Strategy}, column type=l},
+        columns/avg_max_dd/.style={column name=\caname{Max.}{Drawdown}},
+        columns/avg_ulcer/.style={column name=\caname{Ulcer}{Index}},
+        columns/avg_recovery_days/.style={column name=\caname{Recovery}{(days)}},
+        columns/avg_return_full/.style={column name=\caname{Full}{Crisis}},
+        columns/avg_return_ptt/.style={column name=\caname{Peak to}{Trough}},
+        columns/avg_return_ttp/.style={column name=\caname{Trough to}{Recovery}},
+    ]{\crisisavg}
 \end{table}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Regime detectors: changepoint (VIX), Hidden Markov Model (S\&P~500) and clustering (Wasserstein k-means, S\&P~500 and VIX), 1998--2025. Daily: the detector's own daily state. Monthly, quarterly, yearly: the state on the first trading day of the month, quarter or year, held until the next one, as the portfolios hold it. Episodes: number of switches into the crisis state; duration: their average length in trading days. Defensive: share of trading days in the crisis state. Entry lag: trading days from the S\&P~500 peak to the first crisis day (negative: already in the crisis state at the peak), over the crises entered before the trough. Exit lag: trading days from the S\&P~500 trough to the first calm day, over the crises in which the detector switches back. In brackets: number of the seven crises behind the average lag. Recall and precision per day against the crisis label S\&P~500 peak to trough.}
+    \label{tab:detectors}
+    \vspace{4pt}
+    % cells stored as text (48.7%, -74.3 (6)): read with % as a normal character, printed as they are
+    \catcode`\%=12 \pgfplotstableread[col sep=comma]{\tabledetectorsfile}\detectors \catcode`\%=14
+    \newcommand{\dtname}[2]{\textbf{\begin{tabular}[b]{@{}c@{}}#1\\#2\end{tabular}}}
+    \footnotesize
+    \setlength{\tabcolsep}{4pt}
+    \pgfplotstabletypeset[
+        columns={detector,n_episodes,avg_episode_days,defensive_share,avg_entry_lag,avg_exit_lag,recall,precision},
+        every head row/.style={before row=\toprule, after row=\midrule},
+        every last row/.style={after row=\bottomrule},
+        % the frequency column is not shown: a header row above each block of three detectors
+        every row no 0/.style={before row={\multicolumn{8}{l}{\textit{Daily}}\\}},
+        every row no 3/.style={before row={\midrule\multicolumn{8}{l}{\textit{Monthly}}\\}},
+        every row no 6/.style={before row={\midrule\multicolumn{8}{l}{\textit{Quarterly}}\\}},
+        every row no 9/.style={before row={\midrule\multicolumn{8}{l}{\textit{Yearly}}\\}},
+        string type, column type=c,
+        columns/detector/.style={column name=\textbf{Detector}, column type=l},
+        columns/n_episodes/.style={column name=\dtname{}{Episodes}},
+        columns/avg_episode_days/.style={column name=\dtname{Duration}{(days)}},
+        columns/defensive_share/.style={column name=\dtname{}{Defensive}},
+        columns/avg_entry_lag/.style={column name=\dtname{Entry Lag}{(days)}},
+        columns/avg_exit_lag/.style={column name=\dtname{Exit Lag}{(days)}},
+        columns/recall/.style={column name=\dtname{}{Recall}},
+        columns/precision/.style={column name=\dtname{}{Precision}},
+    ]{\detectors}
+\end{table}
+
 \FloatBarrier
 
 \subsection{Crisis Excess Returns: Peak to Trough vs.\ Trough to Recovery}
@@ -561,163 +627,7 @@ Methodology and calculation 1:1 to the paper
 
 \subsection{Detection Quality}
 
-\begin{table}[htbp]
-    \centering
-    \caption{Crisis detection quality of the regime detectors by evaluation frequency. Defensive: share of days in the crisis state; Episodes: number of crisis-state episodes; Avg.\ ep.: mean length of an episode in trading days; Recall: share of crisis days flagged; Precision: share of flagged days that are crisis days; Lift: precision relative to the share of crisis days in the sample; False alarms: flagged days outside crises; Missed: crises (of seven) never flagged.}
-    \label{tab:detection}
-    \vspace{4pt}
-    % shares stored as decimals: shown in %; the frequency column is not shown,
-    % it is a header row above each block of three detectors (rows 0, 3, 6, 9)
-    \small
-    \setlength{\tabcolsep}{3pt}
-    \pgfplotstabletypeset[
-        col sep=comma,
-        columns={detector,time_defensive,n_episodes,mean_episode_days,recall,precision,lift,false_alarm_days,missed_crises},
-        every head row/.style={before row=\toprule, after row=\midrule},
-        every last row/.style={after row=\bottomrule},
-        every row no 0/.style={before row={\multicolumn{9}{l}{\textit{Daily}}\\}},
-        every row no 3/.style={before row={\midrule\multicolumn{9}{l}{\textit{Monthly}}\\}},
-        every row no 6/.style={before row={\midrule\multicolumn{9}{l}{\textit{Quarterly}}\\}},
-        every row no 9/.style={before row={\midrule\multicolumn{9}{l}{\textit{Yearly}}\\}},
-        fixed, fixed zerofill,
-        columns/detector/.style={string type, column name=Detector, column type=l,
-            string replace={changepoint}{Changepoint}, string replace={hmm}{HMM},
-            string replace={wasserstein}{Wasserstein}},
-        columns/time_defensive/.style={column name={\begin{tabular}{@{}c@{}}Defensive\\(\%)\end{tabular}}, multiply by=100, precision=2},
-        columns/n_episodes/.style={column name=Episodes, precision=0},
-        columns/mean_episode_days/.style={column name={\begin{tabular}{@{}c@{}}Avg.\ ep.\\(days)\end{tabular}}, precision=0},
-        columns/recall/.style={column name={\begin{tabular}{@{}c@{}}Recall\\(\%)\end{tabular}}, multiply by=100, precision=2},
-        columns/precision/.style={column name={\begin{tabular}{@{}c@{}}Precision\\(\%)\end{tabular}}, multiply by=100, precision=2},
-        columns/lift/.style={column name=Lift, precision=2},
-        columns/false_alarm_days/.style={column name={\begin{tabular}{@{}c@{}}False alarms\\(days)\end{tabular}}, precision=0},
-        columns/missed_crises/.style={column name=Missed, precision=0},
-    ]{\tablethreefile}
-\end{table}
-
-\begin{table}[htbp]
-    \centering
-    \caption{Timing of the regime detectors around the crises, by evaluation frequency. Exit lag: median trading days from the crisis peak until the detector switches to the crisis state (negative = before the peak); Re-entry lag: median trading days until it switches back; Missed: crises not flagged; Late def.: crises flagged only late; Not recovered: crises after which the detector did not leave the crisis state before the next crisis.}
-    \label{tab:timing}
-    \vspace{4pt}
-    % frequency column not shown: header row above each block of three detectors
-    % (rows 0, 3, 6, 9); list cells are wrapped in {} in the file to protect the commas
-    \small
-    \setlength{\tabcolsep}{4pt}
-    \pgfplotstabletypeset[
-        col sep=comma,
-        columns={detector,median_exit_lag,median_re_entry_lag,missed,late_def,never_recovered_before_next_crisis},
-        every head row/.style={before row=\toprule, after row=\midrule},
-        every last row/.style={after row=\bottomrule},
-        every row no 0/.style={before row={\multicolumn{6}{l}{\textit{Daily}}\\}},
-        every row no 3/.style={before row={\midrule\multicolumn{6}{l}{\textit{Monthly}}\\}},
-        every row no 6/.style={before row={\midrule\multicolumn{6}{l}{\textit{Quarterly}}\\}},
-        every row no 9/.style={before row={\midrule\multicolumn{6}{l}{\textit{Yearly}}\\}},
-        empty cells with={--},
-        fixed, precision=1,
-        columns/detector/.style={string type, column name=Detector, column type=l,
-            string replace={changepoint}{Changepoint}, string replace={hmm}{HMM},
-            string replace={wasserstein}{Wasserstein}},
-        columns/median_exit_lag/.style={column name={\begin{tabular}{@{}c@{}}Exit lag\\(days)\end{tabular}}},
-        columns/median_re_entry_lag/.style={column name={\begin{tabular}{@{}c@{}}Re-entry lag\\(days)\end{tabular}}},
-        columns/missed/.style={string type, column name={\begin{tabular}{@{}c@{}}Missed\\(ptt)\end{tabular}}},
-        columns/late_def/.style={string type, column name={\begin{tabular}{@{}c@{}}Late\\(ttp)\end{tabular}}},
-        columns/never_recovered_before_next_crisis/.style={string type, column name={Still defensive}, column type=l},
-    ]{\tablefourfile}
-\end{table}
 \FloatBarrier
-
-
-\subsection{LSTM (No Regime)}
-
-\begin{figure}[htbp]
-    \centering
-    \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{18}
-    \begin{tikzpicture}
-        \begin{axis}[navchart, ymax=18, ytick={3,6,9,12,15,18}]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmbasevaluefile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) without regime overlay: monthly portfolio value (NAV).}
-    \label{fig:nav_lstm_base}
-\end{figure}
-
-
-\subsection{LSTM (Changepoint VIX)}
-
-\begin{figure}[htbp]
-    \centering
-    \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{4}
-    \begin{tikzpicture}
-        \begin{axis}[navchart]
-            \crises
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmvaluefile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV).}
-    \label{fig:nav_lstm_changepoint}
-\end{figure}
-
-
-\subsection{LSTM (Changepoint VIX, Cash)}
-
-\begin{figure}[htbp]
-    \centering
-    \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{4}
-    \begin{tikzpicture}
-        \begin{axis}[navchart]
-            \crisesshade
-            \defensive{\lstmchangepointdefensivefile}
-            \criseslines
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmvaluefile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with changepoint (VIX) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
-    \label{fig:nav_lstm_changepoint_cash}
-\end{figure}
-
-
-\subsection{LSTM (HMM S\&P 500)}
-
-\begin{figure}[htbp]
-    \centering
-    \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{8}
-    \begin{tikzpicture}
-        \begin{axis}[navchart, ymax=8, ytick={2,4,6,8}]
-            \crisesshade
-            \defensive{\lstmhmmdefensivefile}
-            \criseslines
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmhmmvaluefile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with HMM (S\&P 500) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
-    \label{fig:nav_lstm_hmm}
-\end{figure}
-
-
-\subsection{LSTM (Wasserstein S\&P 500 and VIX)}
-
-\begin{figure}[htbp]
-    \centering
-    \renewcommand{\crisisymin}{0.5}
-    \renewcommand{\crisisymax}{6}
-    \begin{tikzpicture}
-        \begin{axis}[navchart, ymax=6, ytick={1,2,3,4,5,6}]
-            \crisesshade
-            \defensive{\lstmwassersteindefensivefile}
-            \criseslines
-            \addplot[blue!70!black, line width=0.4pt] table[x=month_end, y=nav] {\lstmwassersteinvaluefile};
-        \end{axis}
-    \end{tikzpicture}
-    \caption{LSTM ($t=10$, holdout, rank) with Wasserstein (S\&P 500 and VIX) regimes and cash: monthly portfolio value (NAV). Green: months held in cash.}
-    \label{fig:nav_lstm_wasserstein}
-\end{figure}
-
-
 
 
 

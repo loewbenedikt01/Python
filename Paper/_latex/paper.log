@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  28 OCT 2026 22:21
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026)  (format=lualatex 2026.4.14)  29 OCT 2026 19:47
  system commands enabled.
 **c:/Users/benel/Coding/Python/Paper/_latex/paper
 (c:/Users/benel/Coding/Python/Paper/_latex/paper.tex
@@ -648,47 +648,36 @@ PGFPlots: reading {regime_hmm_gspc_monthly.csv}
 Package pgfplots info on input line 413: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
 Package pgfplots info on input line 413: Using 'lua backend=false' for axis: x coord trafo unsupported.
 PGFPlots: reading {regime_wasserstein_gspc_vix_monthly.csv}
-PGFPlots: reading {data_finalized/table_1.txt}
-PGFPlots: reading {data_finalized/table_2.txt}
+Package pgfplots info on input line 427: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 427: Using 'lua backend=false' for axis: x coord trafo unsupported.
+PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
+Package pgfplots info on input line 428: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 428: Using 'lua backend=false' for axis: x coord trafo unsupported.
+PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
+Package pgfplots info on input line 429: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
+Package pgfplots info on input line 429: Using 'lua backend=false' for axis: x coord trafo unsupported.
+PGFPlots: reading {data_finalized/figure_pcrisis_monthly.csv}
+ [7] [8] [9]
+PGFPlots: reading {data_finalized/table_1_crisis_overview.csv}
 
-Overfull \hbox (17.32341pt too wide) in paragraph at lines 466--467
- [][] 
+Underfull \hbox (badness 1009) in paragraph at lines 479--479
+[]\TU/Arial(0)/m/n/12 Ta-ble 2: Full-period per-for-mance 1998--2025; base-lines, monthly re-bal-anc-ing.
  []
 
-PGFPlots: reading {data_finalized/table_2.csv}
-[7] [8]
-Package pgfplots info on input line 542: Using 'lua backend=false' for plot 0 (type 'pgfplothandlerdiscard'): point meta choice does not support LUA.
+PGFPlots: reading {data_finalized/table_2_full_period.csv}
+PGFPlots: reading {data_finalized/table_3_crisis_average.csv}
+PGFPlots: reading {data_finalized/table_4_detectors.csv}
+[10] [11] [12]
+Package pgfplots info on input line 608: Using 'lua backend=false' for plot 0 (type 'pgfplothandlerdiscard'): point meta choice does not support LUA.
 PGFPlots: reading {data_finalized/scatterplot.txt}
-Package pgfplots info on input line 553: Using 'lua backend=false' for plot 1 (type 'pgfplothandlerdiscard'): LUA does not support 'visualization depends on' (yet).
+Package pgfplots info on input line 619: Using 'lua backend=false' for plot 1 (type 'pgfplothandlerdiscard'): LUA does not support 'visualization depends on' (yet).
 PGFPlots: reading {data_finalized/scatterplot.txt}
- [9] [10]
-PGFPlots: reading {data_finalized/table_3.txt}
-PGFPlots: reading {data_finalized/table_4.txt}
- [11] [12]
-Package pgfplots info on input line 637: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 637: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {lstm_t_10_holdout_rank_monthly_monthly_value.csv}
-Package pgfplots info on input line 654: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 654: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_monthly_value.csv}
-Package pgfplots info on input line 671: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 671: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_defensive.csv}
-PGFPlots: reading {lstm_t_10_holdout_rank_changepoint_vix_cash_monthly_monthly_value.csv}
-Package pgfplots info on input line 690: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 690: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_defensive.csv}
-PGFPlots: reading {lstm_t_10_holdout_rank_hmm_gspc_cash_monthly_monthly_value.csv}
-Package pgfplots info on input line 709: dateplot: setting 'date ZERO={1998-01-01}' for this axis.
-Package pgfplots info on input line 709: Using 'lua backend=false' for axis: x coord trafo unsupported.
-PGFPlots: reading {lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_defensive.csv}
-PGFPlots: reading {lstm_t_10_holdout_rank_wasserstein_gspc_vix_cash_monthly_monthly_value.csv}
- [13] [14]
-Underfull \hbox (badness 10000) in paragraph at lines 728--732
+ [13]
+Underfull \hbox (badness 10000) in paragraph at lines 638--642
 
  []
 
-[15] (./paper.aux)
+[14] (./paper.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
@@ -700,19 +689,19 @@ LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
 )
 
 Here is how much of LuaTeX's memory you used:
- 27882 strings out of 475900
- 244158,4101490 words of node,token memory allocated
+ 27747 strings out of 475900
+ 244156,4101490 words of node,token memory allocated
  500 words of node memory still in use:
    6 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 1 glyph, 8 attribute, 53 glue_spec, 8 attribute_list, 2 write nodes
-   avail lists: 2:29588,3:23400,4:414,5:59,6:34,7:8992,8:34,9:1016,10:22,11:288
- 49735 multiletter control sequences out of 65536+600000
- 68 fonts using 16949943 bytes
- 99i,19n,113p,916b,2344s stack positions out of 10000i,1000n,20000p,200000b,200000s
+   avail lists: 1:2,2:37214,3:26688,4:500,5:73,6:34,7:9102,8:34,9:992,10:18,11:419
+ 49620 multiletter control sequences out of 65536+600000
+ 69 fonts using 17713631 bytes
+ 99i,19n,113p,1083b,2344s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <c:/Windows/Fonts/ARIALNI.TTF><c:/texlive/2026/texmf-dist/fonts/opentype/public/lm/lmmono12-regular.otf><c:/Windows/Fonts/arial.ttf><c:/Windows/Fonts/arialbd.ttf><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi12.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb><c:/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
-Output written on paper.pdf (17 pages, 330158 bytes).
+Output written on paper.pdf (16 pages, 311565 bytes).
 
-PDF statistics: 125 PDF objects out of 1000 (max. 8388607)
- 84 compressed objects within 1 object stream
+PDF statistics: 122 PDF objects out of 1000 (max. 8388607)
+ 82 compressed objects within 1 object stream
  0 named destinations out of 1000 (max. 1048576)
  16 words of extra memory for PDF output out of 10000 (max. 100000000)
 
